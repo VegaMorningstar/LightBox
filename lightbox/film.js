@@ -222,10 +222,12 @@ export function createFilm(scene, cfg = { push: 1, flutter: 1 }) {
       const t = `translate(${s.ox.toFixed(2)}px, ${s.oy.toFixed(2)}px) rotate(${s.rot.toFixed(5)}rad)`;
       s.el.style.transform = t;
       if (s.gel) s.gel.style.transform = t;
+      if (s.mel) s.mel.style.transform = t;
       for (const c of s.cells) {
         const ct = `translate(${c.x.toFixed(2)}px, ${c.dy.toFixed(2)}px) rotate(${c.ang.toFixed(5)}rad)`;
         c.el.style.transform = ct;
         if (c.gel) c.gel.style.transform = ct;
+        if (c.mel) c.mel.style.transform = ct;
       }
       // Where this strip lies over another, it is split in two: the strip itself is cut away there, and its
       // twin (the ghost) fills just that region through a filter that makes each pixel as transparent as its
@@ -236,13 +238,14 @@ export function createFilm(scene, cfg = { push: 1, flutter: 1 }) {
         // the opaque part reaches 1px into the overlap, so the two parts always meet with no hairline between them
         const cut = s.over.map((poly) => inset(poly, 1)).filter((poly) => poly.length >= 3);
         s.el.style.clipPath = `path(evenodd, 'M ${-m} ${-m} L ${s.w + m} ${-m} L ${s.w + m} ${s.h + m} L ${-m} ${s.h + m} Z ${cut.map(box).join(' ')}')`;
-        if (s.gel) {
-          s.gel.style.clipPath = `path('${s.over.map(box).join(' ')}')`;
-          s.gel.style.visibility = "visible";
-        }
+        const region = `path('${s.over.map(box).join(' ')}')`;
+        // the twins fill the cut-away region: one see-through by density, one multiplied onto what is below
+        if (s.gel) { s.gel.style.clipPath = region; s.gel.style.visibility = "visible"; s.gel.style.opacity = String(1 - scene.stack); }
+        if (s.mel) { s.mel.style.clipPath = region; s.mel.style.visibility = "visible"; s.mel.style.opacity = String(scene.stack); }
       } else {
         s.el.style.clipPath = "";
         if (s.gel) s.gel.style.visibility = "hidden";
+        if (s.mel) s.mel.style.visibility = "hidden";
       }
     }
   }
@@ -386,7 +389,7 @@ export function createFilm(scene, cfg = { push: 1, flutter: 1 }) {
               for (const c of s.cells) { c.ang = 0; c.omega = 0; }
               chain(s);
             }
-            for (const s of scene.strips) { s.manual = false; s.z = 0; s.el.style.zIndex = ""; if (s.gel) s.gel.style.zIndex = ""; }
+            for (const s of scene.strips) { s.manual = false; s.z = 0; s.el.style.zIndex = ""; if (s.gel) s.gel.style.zIndex = ""; if (s.mel) s.mel.style.zIndex = ""; }
             zTop = 0;
             tidying = false;
           }
@@ -453,6 +456,7 @@ export function createFilm(scene, cfg = { push: 1, flutter: 1 }) {
       hit.s.z = ++zTop;                                        // lift it above the others
       hit.s.el.style.zIndex = hit.s.z;
       if (hit.s.gel) hit.s.gel.style.zIndex = hit.s.z;
+      if (hit.s.mel) hit.s.mel.style.zIndex = hit.s.z;
       held = { s: hit.s, gx: hit.gx, gy: hit.gy, t: performance.now(), v: { x: 0, y: 0, w: 0 }, speed: 0 };
       hit.s.cvx = hit.s.cvy = hit.s.cw = 0;
       hit.s.vx = hit.s.vy = 0;
@@ -486,6 +490,9 @@ export function createFilm(scene, cfg = { push: 1, flutter: 1 }) {
     },
 
     get holding() { return held !== null; },
+
+    /* 0 = stacked film blends by transparency, 1 = it multiplies the light */
+    setStack(m) { scene.stack = m; findOverlaps(); applyDom(); },
 
     /* organize: ease the whole film back to its starting layout */
     reset() {

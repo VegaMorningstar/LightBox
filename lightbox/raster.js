@@ -29,11 +29,89 @@ export const FILM_DENSE = 0.93;       // alpha of a fully dark pixel
 export const FILM_CLEAR = 0.3;        // alpha of the brightest pixels of a negative
 export const FILM_LUM_REF = 0.7;      // negative brightness that counts as fully clear
 export const filmAlpha = (lum) => FILM_DENSE - ((FILM_DENSE - FILM_CLEAR) * Math.min(1, lum / FILM_LUM_REF));
-const BASE_ALPHA = filmAlpha(0.1);    // the film base and borders (about #1b1917)
+const BASE_ALPHA = filmAlpha(0.1);    // the film base and borders (about #1b1917), seen as a negative
+const BASE_ALPHA_POS = 0.5;           // ...and seen through the eyepiece as a positive: dark film is the most see-through there
 const TAG_ALPHA = 0.75;               // printed edge text, relative to the film
 
+/* ---------- the light panel ----------
+ * A real light box is not perfectly even: it falls off toward the edges and has faint patchy zones. The film
+ * is lit by that panel, so the panel scales the light that reaches the board and the film together. It is
+ * applied multiplicatively (never painted over), so black film stays black. One definition is used by the
+ * page (CSS gradients) and by both glasses (canvas gradients), so they always agree.
+ * Each layer is a soft ellipse of darkening: centre and radii as fractions of the sheet, and [position, alpha]
+ * stops. `fall` scales the whole effect (0 = a perfectly even panel). */
+const PANEL_INK = "40,28,8";
+const PANEL_LAYERS = [
+  { cx: 0.5, cy: 0.42, rx: 0.95, ry: 0.85, stops: [[0.4, 0], [1, 0.34]] },      // falloff toward the edges and corners
+  { cx: 0.12, cy: 0.3, rx: 0.4, ry: 0.55, stops: [[0, 0.06], [1, 0]] },         // a slightly dimmer zone
+  { cx: 0.88, cy: 0.78, rx: 0.36, ry: 0.5, stops: [[0, 0.05], [1, 0]] },
+];
+
+/* The brighter patches and the faint warm / cool drift across the panel. They raise the light by a proportional
+ * gain (color-dodge: the gain is 1 / (1 - colour), so a dark pixel gets only a little brighter in absolute terms
+ * and pure black stays black), which is what a brighter patch of panel does to the film in front of it.
+ * `glow` scales them (0 = none). */
+const PANEL_GLOW = [
+  { cx: 0.34, cy: 0.34, rx: 0.34, ry: 0.42, color: "70,70,66", stops: [[0, 0.14], [1, 0]] },   // a brighter patch
+  { cx: 0.72, cy: 0.58, rx: 0.38, ry: 0.46, color: "70,70,66", stops: [[0, 0.11], [1, 0]] },
+  { cx: 0.5, cy: 0.95, rx: 0.5, ry: 0.22, color: "70,70,66", stops: [[0, 0.09], [1, 0]] },
+  { cx: 0.18, cy: 0.82, rx: 0.42, ry: 0.4, color: "60,22,0", stops: [[0, 0.22], [1, 0]] },     // warm drift
+  { cx: 0.86, cy: 0.18, rx: 0.42, ry: 0.4, color: "0,22,64", stops: [[0, 0.2], [1, 0]] },      // cool drift
+];
+
+const gradientCss = (l, ink, k) =>
+  `radial-gradient(ellipse ${l.rx * 100}% ${l.ry * 100}% at ${l.cx * 100}% ${l.cy * 100}%, ` +
+  l.stops.map(([o, a]) => `rgba(${ink},${(a * k).toFixed(4)}) ${o * 100}%`).join(", ") + ")";
+
+/* the darkening layers, as a CSS background */
+export function panelBackground(fall) {
+  return PANEL_LAYERS.map((l) => gradientCss(l, PANEL_INK, fall)).join(", ");
+}
+/* the glow layers, as a CSS background (shown with mix-blend-mode: color-dodge) */
+export function panelGlowBackground(glow) {
+  return PANEL_GLOW.map((l) => gradientCss(l, l.color, glow)).join(", ");
+}
+
+function paintLayers(ctx, W, H, layers, inkOf, k) {
+  for (const l of layers) {
+    ctx.save();
+    ctx.translate(l.cx * W, l.cy * H);
+    ctx.scale(l.rx * W, l.ry * H);
+    const g = ctx.createRadialGradient(0, 0, 0, 0, 0, 1);
+    for (const [o, a] of l.stops) g.addColorStop(o, `rgba(${inkOf(l)},${(a * k).toFixed(4)})`);
+    ctx.fillStyle = g;
+    ctx.fillRect(-l.cx / l.rx, -l.cy / l.ry, 1 / l.rx, 1 / l.ry);
+    ctx.restore();
+  }
+}
+
+function paintPanel(ctx, W, H, fall, glow) {
+  if (fall > 0) {
+    ctx.save();
+    ctx.globalCompositeOperation = "multiply";
+    paintLayers(ctx, W, H, PANEL_LAYERS, () => PANEL_INK, fall);
+    ctx.restore();
+  }
+  if (glow > 0) {
+    ctx.save();
+    ctx.globalCompositeOperation = "color-dodge";
+    paintLayers(ctx, W, H, PANEL_GLOW, (l) => l.color, glow);
+    ctx.restore();
+  }
+}
+
+export function parseColor(str) {
+  const c = document.createElement("canvas");
+  c.width = c.height = 1;
+  const t = c.getContext("2d", { willReadFrequently: true });
+  t.fillStyle = str;
+  t.fillRect(0, 0, 1, 1);
+  const d = t.getImageData(0, 0, 1, 1).data;
+  return [d[0], d[1], d[2]];
+}
+
 /* the same rule as an SVG filter: sets each pixel's alpha from its brightness, keeping holes see-through */
-export function buildFilmFilter(id) {
+export function buildFilmFilter(id, boardRgb = [221, 208, 182]) {
   const NS = "http://www.w3.org/2000/svg";
   const k = (FILM_DENSE - FILM_CLEAR) / FILM_LUM_REF;
   const svg = document.createElementNS(NS, "svg");
@@ -44,6 +122,10 @@ export function buildFilmFilter(id) {
     <feColorMatrix in="SourceGraphic" type="matrix" result="m"
       values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  ${(-k * 0.2126).toFixed(4)} ${(-k * 0.7152).toFixed(4)} ${(-k * 0.0722).toFixed(4)} 0 ${FILM_DENSE}"/>
     <feComposite in="m" in2="SourceAlpha" operator="in"/>
+  </filter>
+  <filter id="${id}-mult" color-interpolation-filters="sRGB" x="0" y="0" width="100%" height="100%">
+    <feColorMatrix in="SourceGraphic" type="matrix"
+      values="${(255 / boardRgb[0]).toFixed(4)} 0 0 0 0  0 ${(255 / boardRgb[1]).toFixed(4)} 0 0 0  0 0 ${(255 / boardRgb[2]).toFixed(4)} 0 0  0 0 0 1 0"/>
   </filter></defs>`;
   return svg;
 }
@@ -140,6 +222,8 @@ export async function readScene(stage, root) {
   const css = (name, fallback) => cs.getPropertyValue(name).trim() || fallback;
   const ghost = stage.querySelector(".lb-ghost");      // a copy of the sheet that shows the lower strip through the upper one
   const ghostStrips = ghost ? [...ghost.querySelectorAll(".lb-strip")] : [];
+  const mult = stage.querySelector(".lb-mult");        // ...and a twin that multiplies instead (stacked film)
+  const multStrips = mult ? [...mult.querySelectorAll(".lb-strip")] : [];
   const strips = [...sheet.querySelectorAll(".lb-strip")].map((strip, si) => {
     const first = strip.querySelector(".lb-frame");
     const fw = first.offsetWidth, fh = first.offsetHeight;
@@ -147,6 +231,7 @@ export async function readScene(stage, root) {
     return {
       el: strip,
       gel: ghostStrips[si] ?? null,
+      mel: multStrips[si] ?? null,
       over: [], under: [],                              // overlap polygons (sheet px) with strips beneath / above
       left: strip.offsetLeft, top: strip.offsetTop, w: strip.offsetWidth, h: strip.offsetHeight,
       rot: ((parseFloat(strip.style.getPropertyValue("--rot")) || 0) * Math.PI) / 180,
@@ -157,6 +242,7 @@ export async function readScene(stage, root) {
         return {
           el: cell, index,
           gel: ghostStrips[si]?.querySelectorAll(".lb-cell")[index] ?? null,
+          mel: multStrips[si]?.querySelectorAll(".lb-cell")[index] ?? null,
           top: cell.offsetTop, h: cell.offsetHeight,
           x: 0, dy: 0, ang: 0, omega: 0,                // this piece shifted / tilted against its neighbours
           frame: {
@@ -170,11 +256,23 @@ export async function readScene(stage, root) {
       }),
     };
   });
-  return {
+  const scene = {
     W: stage.clientWidth, H: stage.offsetHeight, strips,
     bg: css("--lb-bg", "#ddd0b6"), lit: css("--lb-lit", "#fff7e2"),
     film: css("--lb-film", "#1b1917"), ink: css("--lb-edge-ink", "#d89a4c"),
+    stack: 1,     // 0 = film blends by transparency, 1 = stacked film multiplies the light
+    fall: 1,      // panel falloff
+    glow: 1,      // panel glow (brighter patches and colour drift)
   };
+  /* Stacked negatives multiply: what shows is (lower * upper) / board, where `board` is what clear film shows
+     over the bare panel. Dividing the board out keeps the colour of a lone strip unchanged. */
+  const P = parseColor(scene.bg);
+  const div = (rgb) => `rgb(${rgb.map((v, i) => Math.min(255, Math.round((v * 255) / P[i]))).join(",")})`;
+  scene.norm = {
+    neg: { film: div(parseColor(scene.film)), ink: div(parseColor(scene.ink)), dodge: `rgb(${P.map((v) => 255 - v).join(",")})` },
+    pos: { film: scene.film, ink: scene.ink, dodge: null },     // positives are drawn at their own brightness
+  };
+  return scene;
 }
 
 /* bake every photo as a negative now, so nothing hitches later when the sheet first moves */
@@ -210,7 +308,33 @@ function drawTranslucentPhoto(ctx, f, s, mode) {
   ctx.drawImage(scratch, 0, 0, w, h, f.x, f.y, s.fw, s.fh);
 }
 
-function drawCell(ctx, scene, s, c, mode, translucent = false) {
+/* a frame's photo for the multiply pass: opaque, with the board's colour divided out of a negative */
+function drawMultPhoto(ctx, f, s, mode, norm) {
+  const m = ctx.getTransform();
+  const k = Math.min(Math.hypot(m.a, m.b), 3);
+  const w = Math.max(1, Math.round(s.fw * k)), h = Math.max(1, Math.round(s.fh * k));
+  scratch ??= document.createElement("canvas");
+  if (scratch.width < w) scratch.width = w;
+  if (scratch.height < h) scratch.height = h;
+  const t = scratch.getContext("2d");
+  t.imageSmoothingQuality = "high";
+  t.globalCompositeOperation = "source-over";
+  t.clearRect(0, 0, scratch.width, scratch.height);
+  if (mode === "neg") t.drawImage(f.neg, 0, 0, w, h);
+  else t.drawImage(f.img, ...coverCrop(f.img, w, h), 0, 0, w, h);
+  if (norm.dodge) {
+    t.globalCompositeOperation = "color-dodge";          // backdrop / (1 - source) = photo / board, per channel
+    t.fillStyle = norm.dodge;
+    t.fillRect(0, 0, w, h);
+    t.globalCompositeOperation = "source-over";
+  }
+  ctx.drawImage(scratch, 0, 0, w, h, f.x, f.y, s.fw, s.fh);
+}
+
+/* variant: "opaque" (a plain strip), "alpha" (see-through by density) or "mult" (to be multiplied onto what is below) */
+function drawCell(ctx, scene, s, c, mode, variant = "opaque") {
+  const translucent = variant === "alpha";
+  const norm = variant === "mult" ? scene.norm[mode] : null;
   // film base with see-through sprocket holes
   ctx.beginPath();
   ctx.rect(0, 0, s.w, c.h);
@@ -219,15 +343,17 @@ function drawCell(ctx, scene, s, c, mode, translucent = false) {
     ellipticRect(ctx, 0.14 * s.b, y + 0.26 * s.hp, 0.46 * s.b, 0.48 * s.hp, 0.14 * s.b, 0.12 * s.hp);
     ellipticRect(ctx, s.w - s.b + 0.4 * s.b, y + 0.26 * s.hp, 0.46 * s.b, 0.48 * s.hp, 0.14 * s.b, 0.12 * s.hp);
   }
-  ctx.fillStyle = scene.film;
+  ctx.fillStyle = norm ? norm.film : scene.film;
   const outer = ctx.globalAlpha;
-  if (translucent) ctx.globalAlpha = outer * BASE_ALPHA;
+  if (translucent) ctx.globalAlpha = outer * (mode === "pos" ? BASE_ALPHA_POS : BASE_ALPHA);
   ctx.fill("evenodd");
   ctx.globalAlpha = outer;
 
   const f = c.frame;
   if (f.img.naturalWidth) {
-    if (translucent) {
+    if (norm) {
+      if (mode !== "neg" || f.neg) drawMultPhoto(ctx, f, s, mode, norm);
+    } else if (translucent) {
       if (mode !== "neg" || f.neg) drawTranslucentPhoto(ctx, f, s, mode);
     } else if (mode === "neg") {
       if (f.neg) ctx.drawImage(f.neg, f.x, f.y, s.fw, s.fh);
@@ -240,7 +366,7 @@ function drawCell(ctx, scene, s, c, mode, translucent = false) {
   const size = s.fw * 0.045;
   ctx.font = `600 ${size}px ui-monospace, "SF Mono", Menlo, monospace`;
   if ("letterSpacing" in ctx) ctx.letterSpacing = `${size * 0.12}px`;
-  ctx.fillStyle = scene.ink;
+  ctx.fillStyle = norm ? norm.ink : scene.ink;
   const baseAlpha = ctx.globalAlpha;
   ctx.globalAlpha = baseAlpha * 0.85 * (translucent ? TAG_ALPHA : 1);
   ctx.textAlign = "center";
@@ -263,7 +389,7 @@ function polyPath(ctx, pts) {
   ctx.closePath();
 }
 
-function drawStrip(ctx, scene, s, mode, view, translucent = false) {
+function drawStrip(ctx, scene, s, mode, view, variant = "opaque") {
   const slack = 90;
   ctx.save();
   ctx.translate(s.left + s.w / 2 + s.ox, s.top + s.oy);   // transform-origin: 50% 0
@@ -281,7 +407,7 @@ function drawStrip(ctx, scene, s, mode, view, translucent = false) {
     ctx.translate(s.w / 2 + c.x, c.top + c.dy);           // the cell's own transform, about its top centre
     ctx.rotate(c.ang);
     ctx.translate(-s.w / 2, 0);
-    drawCell(ctx, scene, s, c, mode, translucent);
+    drawCell(ctx, scene, s, c, mode, variant);
     ctx.restore();
   }
   ctx.restore();
@@ -311,12 +437,30 @@ function drawScene(ctx, scene, { mode, view }) {
       drawStrip(ctx, scene, s, mode, view);
       ctx.restore();
 
-      ctx.save();
-      ctx.beginPath();
-      s.over.forEach((p) => polyPath(ctx, p));
-      ctx.clip();
-      drawStrip(ctx, scene, s, mode, view, true);
-      ctx.restore();
+      // stacked film multiplies the light; `stack` slides between that and a plain see-through blend
+      // Through the eyepiece (positives) the top strip is always see-through by brightness: its dark parts, the
+      // film base included, let the brightest parts of the strip below show through. Multiplying two positives
+      // would just black everything out.
+      const m = mode === "pos" ? 0 : scene.stack;
+      if (m < 1) {
+        ctx.save();
+        ctx.beginPath();
+        s.over.forEach((p) => polyPath(ctx, p));
+        ctx.clip();
+        ctx.globalAlpha = 1 - m;
+        drawStrip(ctx, scene, s, mode, view, "alpha");
+        ctx.restore();
+      }
+      if (m > 0) {
+        ctx.save();
+        ctx.beginPath();
+        s.over.forEach((p) => polyPath(ctx, p));
+        ctx.clip();
+        ctx.globalCompositeOperation = "multiply";
+        ctx.globalAlpha = m;
+        drawStrip(ctx, scene, s, mode, view, "mult");
+        ctx.restore();
+      }
     } else {
       drawStrip(ctx, scene, s, mode, view);
     }
@@ -344,6 +488,7 @@ function createWindowView(scene, dpr, { mode, bg }) {
       ctx.setTransform(k, 0, 0, k, (canvas.width - k * 2 * cx) / 2, (canvas.height - k * 2 * cy) / 2);
       const half = size / 2 / scale;
       drawScene(ctx, scene, { mode, view: { x0: cx - half, y0: cy - half, x1: cx + half, y1: cy + half } });
+      paintPanel(ctx, scene.W, scene.H, scene.fall, scene.glow);      // the light box itself is brighter in the middle
     },
   };
 }

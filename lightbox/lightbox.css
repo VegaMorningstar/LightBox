@@ -73,6 +73,18 @@
           mask-composite: exclude, exclude, add;
 }
 .lb-ghost .lb-strip { visibility: hidden; filter: url(#lb-film-alpha); }   /* shown only over an overlap, see film.js */
+/* stacked film multiplies the light: the upper strip is multiplied onto what is already drawn below it */
+.lb-mult { isolation: auto; }
+.lb-mult .lb-strip { visibility: hidden; mix-blend-mode: multiply; filter: url(#lb-film-alpha-mult); }
+
+/* the film layer is its own group, so the strips' stacking never reaches the eyepiece and the multiply
+   blend only sees the film beneath it */
+.lb-film { display: grid; isolation: isolate; }
+.lb-film > * { grid-area: 1 / 1; }
+
+/* the light panel's falloff and unevenness (the gradients are set from script, see raster.js) */
+.lb-panel { position: absolute; inset: 0; pointer-events: none; mix-blend-mode: multiply; }
+.lb-glow { position: absolute; inset: 0; pointer-events: none; mix-blend-mode: color-dodge; }
 .lb-cell:first-child {                    /* leader before the first frame */
   height: calc(var(--pt) + var(--pitch) + var(--ext));
   padding-top: var(--pt);
@@ -127,10 +139,10 @@
 .lb-tag.r { right: calc(var(--fw) * -0.115); }
 
 /* NEGATIVE layer: inverted photos with an orange film-mask cast */
-:is(.lb-neg, .lb-ghost) .lb-img img {
+:is(.lb-neg, .lb-ghost, .lb-mult) .lb-img img {
   filter: invert(1) contrast(.82) brightness(.82) saturate(.8);
 }
-:is(.lb-neg, .lb-ghost) .lb-img::after {
+:is(.lb-neg, .lb-ghost, .lb-mult) .lb-img::after {
   content: "";
   position: absolute;
   inset: 0;

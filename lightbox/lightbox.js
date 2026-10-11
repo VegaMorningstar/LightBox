@@ -1,7 +1,7 @@
 /* LightBox — contact-sheet-on-a-light-box effect.
  *
  *   import { mountLightBox } from "./lightbox/lightbox.js";
- *   mountLightBox(document.querySelector("#sheet"), { photos: ["a.jpg", "b.jpg"], zoom: 1.2, shadow: 1.8, shadowFade: 0.85, clickVolume: 0.6, slideVolume: 0.03, crackleVolume: 1, filmDrag: 1, filmFlutter: 1 });
+ *   mountLightBox(document.querySelector("#sheet"), { photos: ["a.jpg", "b.jpg"], zoom: 1.2, shadow: 1.8, shadowFade: 0.85, clickVolume: 0.6, slideVolume: 0.03, crackleVolume: 1, filmDrag: 1, filmFlutter: 1, stacking: 1, panelFalloff: 1, panelGlow: 1, lightBleed: 1 });
  *
  * The sheet shows inverted "negatives". A draggable eyepiece sits on top of it: liquid glass
  * around a black bezel (turn it to zoom), and a clear inner lens that shows the area underneath
@@ -12,7 +12,7 @@ import { createSounds } from "./sounds.js";
 import { buildDial, buildTrim, DEG_PER_ZOOM, DETENTS, GLASS_RATIO, ZOOM_MAX, ZOOM_MIN } from "./dial.js";
 import { createGlass, createLens } from "./glass.js";
 import { createFilm } from "./film.js";
-import { buildFilmFilter, createLensView, createNegView, readScene, warmNegatives } from "./raster.js";
+import { buildFilmFilter, createLensView, createNegView, panelBackground, panelGlowBackground, parseColor, readScene, warmNegatives } from "./raster.js";
 
 const STRIP_DY = [0, 0.34, 0.12, 0.5, 0.05, 0.27];   // per-strip stagger, in frame widths
 const STRIP_ROT = [-0.3, 0.25, -0.15, 0.35, -0.25, 0.15]; // per-strip tilt, degrees
@@ -141,13 +141,19 @@ function buildControls(rows, { onOrganize } = {}) {
   return { wrap: nav, setters };
 }
 
-export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFade = 0.85, clickVolume = 0.6, slideVolume = 0.03, crackleVolume = 1, filmDrag = 1, filmFlutter = 1, size, controls = true } = {}) {
+export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFade = 0.85, clickVolume = 0.6, slideVolume = 0.03, crackleVolume = 1, filmDrag = 1, filmFlutter = 1, stacking = 1, panelFalloff = 1, panelGlow = 1, lightBleed = 1, size, controls = true } = {}) {
   root.classList.add("lb-root");
   const stage = div("lb-stage");
   root.replaceChildren(stage);
-  root.append(buildFilmFilter("lb-film-alpha"));
+  root.append(buildFilmFilter("lb-film-alpha", parseColor(getComputedStyle(root).getPropertyValue("--lb-bg").trim() || "#ddd0b6")));
 
   const loupe = buildEyepiece();
+  const panel = div("lb-panel");        // the light box's own unevenness, over the board and the film
+  const glowEl = div("lb-glow");          // brighter patches and colour drift, blended into the light
+  let falloff = panelFalloff;
+  let glow = panelGlow;
+  let stacking_ = stacking;
+  let bleed = lightBleed;
   const glass = createGlass(loupe.refract);
   const lens = createLens(loupe.lens);
   if (!glass || !lens) loupe.el.classList.add("lb-nogl");
@@ -166,6 +172,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
   let negSide = 0;
   let film = null;     // friction between eyepiece, film and board
   let gripping = false;                // a film strip is being held
+  let sceneRef = null;                 // the scene the glasses draw, so sliders can update it
   const filmCfg = { push: filmDrag, flutter: filmFlutter };
   const eyeV = { x: 0, y: 0 };         // eyepiece velocity in px per ms, smoothed
   let fade = shadowFade;
@@ -182,7 +189,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
       view.render(cur.x, cur.y, zoom);
       // the aberration zone is the strip the ring's shadow covers, so it follows the Fade slider
       const edge = Math.max(6, Math.min(G * 0.45, D * 0.082 * fade));
-      lens.draw(view.canvas, lensPad, edge);
+      lens.draw(view.canvas, lensPad, edge, bleed);
     } else if (!lens) {
       // keep the point under the eyepiece centred in the glass, scaled up
       loupe.mag.style.transform = `translate(${G / 2 - zoom * cur.x}px, ${G / 2 - zoom * cur.y}px) scale(${zoom})`;
@@ -263,11 +270,16 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
       loupe.mag.replaceChildren(buildSheet(photos, cols, fw, "lb-pos"));
       loupe.mag.style.width = `${stage.clientWidth}px`;
     }
-    stage.replaceChildren(
+    // the film layer: the sheet, plus twins of each strip for where film lies over film (one blends by
+    // transparency, one multiplies). They are kept in their own isolated group so the eyepiece stays on top.
+    const filmLayer = div("lb-film");
+    filmLayer.append(
       buildSheet(photos, cols, fw, "lb-neg"),
-      ...(glass && lens ? [buildSheet(photos, cols, fw, "lb-ghost")] : []),   // shows a lower strip through an upper one
-      loupe.el,
+      ...(glass && lens ? [buildSheet(photos, cols, fw, "lb-ghost"), buildSheet(photos, cols, fw, "lb-mult")] : []),
     );
+    stage.replaceChildren(filmLayer, panel, glowEl, loupe.el);
+    panel.style.background = panelBackground(falloff);
+    glowEl.style.background = panelGlowBackground(glow);
 
     if (!placed) {   // rest on the sheet, inside the first screenful
       goal.x = stage.clientWidth * 0.42;
@@ -292,7 +304,9 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
           negView.resize(negSide);
           view = createLensView(scene, lens.dpr);
           view.resize(G + lensPad * 2);
+          scene.stack = stacking_; scene.fall = falloff; scene.glow = glow;
           film = createFilm(scene, filmCfg);
+          sceneRef = scene;
           loupe.el.classList.add("has-gl");
           render();
         })
@@ -334,6 +348,10 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
       { key: "zoom", name: "Magnification", min: ZOOM_MIN, max: ZOOM_MAX, step: 0.05, value: zoom, onInput: setZoom },
       { key: "shadow", name: "Shadow strength", min: 0, max: 6, step: 0.05, value: shadow, onInput: setShadow },
       { key: "fade", name: "Shadow fade", min: 0.1, max: 3, step: 0.05, value: shadowFade, onInput: setFade },
+      { key: "stacking", name: "Film stacking", min: 0, max: 1, step: 0.05, value: stacking, onInput: (v) => { stacking_ = v; if (sceneRef) sceneRef.stack = v; film?.setStack(v); render(); } },
+      { key: "falloff", name: "Panel falloff", min: 0, max: 2, step: 0.05, value: panelFalloff, onInput: (v) => { falloff = v; panel.style.background = panelBackground(v); if (sceneRef) sceneRef.fall = v; render(); } },
+      { key: "glow", name: "Panel glow", min: 0, max: 2, step: 0.05, value: panelGlow, onInput: (v) => { glow = v; glowEl.style.background = panelGlowBackground(v); if (sceneRef) sceneRef.glow = v; render(); } },
+      { key: "bleed", name: "Light bleed", min: 0, max: 2, step: 0.05, value: lightBleed, onInput: (v) => { bleed = v; render(); } },
       { key: "filmDrag", name: "Film drag", min: 0, max: 2, step: 0.05, value: filmDrag, onInput: (v) => { filmCfg.push = v; } },
       { key: "filmFlutter", name: "Film flutter", min: 0, max: 2, step: 0.05, value: filmFlutter, onInput: (v) => { filmCfg.flutter = v; } },
       { key: "volume", name: "Click volume", min: 0, max: 1, step: 0.05, value: clickVolume, onInput: (v) => sounds.setClickVolume(v) },

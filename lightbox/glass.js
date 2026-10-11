@@ -70,6 +70,7 @@ uniform float uPad;       // extra source margin around the glass, css px
 uniform float uEdge;      // width of the aberration zone under the ring's shadow, css px
 uniform float uStrength;  // edge bend, css px
 uniform float uChroma;    // colour split at the very edge, css px
+uniform float uGlare;     // how much bright areas bleed light into their surroundings
 out vec4 outColor;
 
 void main() {
@@ -88,6 +89,14 @@ void main() {
   vec2 uv = (p + dir * uStrength * prof + vec2(side * 0.5)) / side;
   vec2 ca = dir * uChroma * prof / side;
   vec3 col = vec3(texture(uTex, uv + ca).r, texture(uTex, uv).g, texture(uTex, uv - ca).b);
+
+  // Light bleed. Light scatters inside the optics and the film base, so bright clear areas lift the dense
+  // areas around them: a veil over everything (stronger when much of the view is bright) and a bloom
+  // that spills from bright edges across the neighbouring dark ones.
+  vec3 haze = (textureLod(uTex, uv, 3.0).rgb + textureLod(uTex, uv, 4.0).rgb + textureLod(uTex, uv, 5.0).rgb) / 3.0;
+  float hl = dot(haze, vec3(0.2126, 0.7152, 0.0722));
+  vec3 spill = max(haze - col, 0.0);
+  col += uGlare * (0.2 * pow(hl, 1.5) * (1.0 - col) + 0.3 * spill * (1.0 - col));
   outColor = vec4(col * cover, cover);
 }`;
 
@@ -188,20 +197,21 @@ export function createGlass(canvas) {
 /* PC: the inner glass. Clear in the middle; bends and splits colour only where the ring's shadow falls.
  * `view` is the magnified window from raster.js's createLensView; `edge` is the width of the zone. */
 export function createLens(canvas) {
-  const pass = makePass(canvas, LENS_FRAG, ["uTex", "uRes", "uDpr", "uG", "uPad", "uEdge", "uStrength", "uChroma"]);
+  const pass = makePass(canvas, LENS_FRAG, ["uTex", "uRes", "uDpr", "uG", "uPad", "uEdge", "uStrength", "uChroma", "uGlare"]);
   if (!pass) return null;
   let size = 1;
   return {
     get dpr() { return pass.dpr; },
     resize(cssSize) { size = cssSize; pass.resize(cssSize); },
-    draw(view, pad, edge) {
-      pass.upload(view, false);
+    draw(view, pad, edge, glare = 0) {
+      pass.upload(view, true);               // mipmaps give the blurred light the glare is made from
       pass.draw((gl, U) => {
         gl.uniform1f(U.uG, size);
         gl.uniform1f(U.uPad, pad);
         gl.uniform1f(U.uEdge, edge);
         gl.uniform1f(U.uStrength, Math.min(edge * 0.55, pad * 0.9));
         gl.uniform1f(U.uChroma, Math.min(edge * 0.26, pad * 0.5));
+        gl.uniform1f(U.uGlare, glare);
       });
     },
   };
