@@ -363,6 +363,17 @@
   box-shadow: 0 14px 30px rgba(60, 40, 10, .2);
 }
 .lb-nav-panel[hidden] { display: none; }
+/* the sliders are grouped under small headings; the panel scrolls if it is taller than the window */
+.lb-nav-panel { max-height: calc(100vh - 56px); overflow-y: auto; overscroll-behavior: contain; }
+.lb-nav-group {
+  margin-top: 6px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(60, 45, 20, .22);
+  font-size: 10px;
+  letter-spacing: .24em;
+  color: #8a7650;
+}
+.lb-nav-group:first-of-type { margin-top: 0; padding-top: 0; border-top: 0; }
 .lb-nav-panel label { display: flex; align-items: center; gap: 12px; }
 .lb-nav-panel label > span { width: 14em; flex: none; white-space: nowrap; }
 .lb-nav-panel output { min-width: 3em; text-align: right; letter-spacing: .06em; }

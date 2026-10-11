@@ -15,16 +15,55 @@
 /* how loud the ordinary dial ticks are, against the notch and lock sounds (1 = as loud as the notch's click) */
 const SUBCLICK = 0.34;
 
-export function createSounds({ clickVolume = 0.6, slideVolume = 0.5, crackleVolume = 0.5 } = {}) {
+/* The glass drag sound (the edge of the glass being dragged across the board) is saved but switched off for now.
+   Set this to true to bring it back: it needs the clip in local-audio/ and plays on localhost only. */
+export const GLASS_DRAG_ENABLED = false;
+
+/* the shape of each grain of the glass drag: a smooth bell from silence up and back down to silence */
+const grainWindow = Float32Array.from({ length: 48 }, (_, i) => 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / 47) );
+
+/* The level of every sound, 0 to 1 (the page has a slider for each). A sound's own level sits under the master. */
+export const DEFAULT_VOLUMES = { master: 1, tick: 0.6, notch: 0.6, lift: 0.6, place: 0.3, drag: 0.3, slide: 0.03, crackle: 1 };
+
+export function createSounds({ volumes = {} } = {}) {
+  const vols = { ...DEFAULT_VOLUMES, ...volumes };
   let ctx = null;
-  let master = null;      // clicks
+  let out = null;          // master volume
+  const bus = {};          // one gain per sound: tick, notch, lift, place
   let slideMaster = null;
   let noise = null;
-  let vol = clickVolume;
-  let slideVol = slideVolume;
-  let crackleVol = crackleVolume;
   let crackleMaster = null;
+  let dragBus = null;      // speed-following level of the glass drag
+  let dragMaster = null;   // its volume setting
+  let dragNext = 0;        // when the next copy of the drag clip should start
   let slideNodes = null;
+
+  // Your own recordings of the glass, for local testing only. On localhost the lift and set-down sounds are played
+  // from clips cut from a voice memo (local-audio/, kept out of git and out of the published site). Pick which clip is
+  // which on local-audio/audition.html. Anywhere else, or if a clip is missing, the synthesised sounds play instead.
+  const LOCAL = ["localhost", "127.0.0.1", "[::1]", ""].includes(location.hostname);
+  const clips = { lift: null, place: null, drag: null };
+  let clipsRequested = false;
+  const pick = (key, fallback) => { try { return localStorage.getItem(key) || fallback; } catch { return fallback; } };
+  async function loadClips() {
+    if (!LOCAL || clipsRequested) return;
+    clipsRequested = true;
+    for (const [name, key, fallback] of [["lift", "lb-clip-lift", "e02a"], ["place", "lb-clip-place", "e15"], ...(GLASS_DRAG_ENABLED ? [["drag", "lb-clip-drag", "e02b"]] : [])]) {
+      try {
+        const res = await fetch(new URL(`../local-audio/clips/${pick(key, fallback)}.wav`, import.meta.url));
+        if (res.ok) clips[name] = await ctx.decodeAudioData(await res.arrayBuffer());
+      } catch { /* no clip: the synthesised sound is used */ }
+    }
+  }
+  function playClip(buf, dest, gain = 0.9) {
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.playbackRate.value = 1 + (Math.random() * 2 - 1) * 0.03;      // a hair of variation so repeats are not identical
+    const g = ctx.createGain();
+    g.gain.value = gain;
+    src.connect(g).connect(dest);
+    src.start();
+  }
 
   const jitter = (spread) => 1 + (Math.random() * 2 - 1) * spread;
 
@@ -33,21 +72,29 @@ export function createSounds({ clickVolume = 0.6, slideVolume = 0.5, crackleVolu
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return null;
       ctx = new AC();
-      master = ctx.createGain();
-      master.gain.value = vol;
-      slideMaster = ctx.createGain();
-      slideMaster.gain.value = slideVol;
       const limiter = ctx.createDynamicsCompressor();
-      master.connect(limiter);
+      out = ctx.createGain();
+      out.gain.value = vols.master;
+      limiter.connect(out);
+      out.connect(ctx.destination);
+      for (const k of ["tick", "notch", "lift", "place"]) { bus[k] = ctx.createGain(); bus[k].gain.value = vols[k]; bus[k].connect(limiter); }
+      slideMaster = ctx.createGain();
+      slideMaster.gain.value = vols.slide;
       slideMaster.connect(limiter);
       crackleMaster = ctx.createGain();
-      crackleMaster.gain.value = crackleVol;
+      crackleMaster.gain.value = vols.crackle;
       crackleMaster.connect(limiter);
-      limiter.connect(ctx.destination);
+      dragMaster = ctx.createGain();
+      dragMaster.gain.value = vols.drag;
+      dragMaster.connect(limiter);
+      dragBus = ctx.createGain();
+      dragBus.gain.value = 0;
+      dragBus.connect(dragMaster);
       noise = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);   // shared by clicks and slide
       const d = noise.getChannelData(0);
       for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
       buildSlide();
+      loadClips();
     }
     if (ctx.state === "suspended") ctx.resume();
     return ctx;
@@ -80,17 +127,18 @@ export function createSounds({ clickVolume = 0.6, slideVolume = 0.5, crackleVolu
     slideNodes = { band, bandGain, lowGain, wobbleGain };
   }
 
-  /* a gentle low-pass so the touch sounds never get bright or harsh; one bus is shared by lift and place */
-  let soft = null;
-  function softBus() {
-    if (!soft) {
-      soft = ctx.createBiquadFilter();
-      soft.type = "lowpass";
-      soft.frequency.value = 4200;
-      soft.Q.value = 0.4;
-      soft.connect(master);
+  /* a gentle low-pass so the touch sounds never get bright or harsh; the lift and the set-down each have one */
+  const softs = {};
+  function softBus(kind) {
+    if (!softs[kind]) {
+      const f = ctx.createBiquadFilter();
+      f.type = "lowpass";
+      f.frequency.value = 4200;
+      f.Q.value = 0.4;
+      f.connect(bus[kind]);
+      softs[kind] = f;
     }
-    return soft;
+    return softs[kind];
   }
 
   function envelope(param, t, peak, attack, decay) {
@@ -99,7 +147,7 @@ export function createSounds({ clickVolume = 0.6, slideVolume = 0.5, crackleVolu
     param.exponentialRampToValueAtTime(0.0001, t + attack + decay);
   }
 
-  function noiseBurst(t, { freq, q, peak, decay, type = "bandpass", attack = 0.0006 }, dest = master) {
+  function noiseBurst(t, { freq, q, peak, decay, type = "bandpass", attack = 0.0006 }, dest) {
     const src = ctx.createBufferSource();
     src.buffer = noise;
     const filter = ctx.createBiquadFilter();
@@ -113,44 +161,68 @@ export function createSounds({ clickVolume = 0.6, slideVolume = 0.5, crackleVolu
     src.stop(t + decay + 0.02);
   }
 
-  function tone(t, { type, from, to, peak, decay, sweep }) {
+  function tone(t, { type, from, to, peak, decay, sweep }, dest) {
     const osc = ctx.createOscillator();
     osc.type = type;
     osc.frequency.setValueAtTime(from, t);
     osc.frequency.exponentialRampToValueAtTime(to, t + sweep);
     const g = ctx.createGain();
     envelope(g.gain, t, peak, 0.0008, decay);
-    osc.connect(g).connect(master);
+    osc.connect(g).connect(dest);
     osc.start(t);
     osc.stop(t + decay + 0.02);
   }
 
-  function clickAt(t, strength) {
-    noiseBurst(t, { freq: 3000 * jitter(0.12), q: 0.9, peak: 0.85 * strength, decay: 0.011 });
-    tone(t, { type: "triangle", from: 2300 * jitter(0.06), to: 1700, peak: 0.16 * strength, decay: 0.007, sweep: 0.006 });
-    tone(t, { type: "sine", from: 230 * jitter(0.08), to: 110, peak: 0.5 * strength, decay: 0.03, sweep: 0.02 });
+  function clickAt(t, strength, dest) {
+    noiseBurst(t, { freq: 3000 * jitter(0.12), q: 0.9, peak: 0.85 * strength, decay: 0.011 }, dest);
+    tone(t, { type: "triangle", from: 2300 * jitter(0.06), to: 1700, peak: 0.16 * strength, decay: 0.007, sweep: 0.006 }, dest);
+    tone(t, { type: "sine", from: 230 * jitter(0.08), to: 110, peak: 0.5 * strength, decay: 0.03, sweep: 0.02 }, dest);
   }
 
   return {
     /* call from a user gesture so the browser lets audio start */
     unlock() { ensure(); },
-    setClickVolume(v) {
-      vol = v;
-      if (master) master.gain.value = v;
+    /* change one sound's level (or the master) while it is playing */
+    setVolume(name, v) {
+      vols[name] = v;
+      const node = name === "master" ? out : name === "slide" ? slideMaster : name === "crackle" ? crackleMaster : name === "drag" ? dragMaster : bus[name];
+      if (node) node.gain.value = v;
     },
-    setSlideVolume(v) {
-      slideVol = v;
-      if (slideMaster) slideMaster.gain.value = v;
-    },
-    setCrackleVolume(v) {
-      crackleVol = v;
-      if (crackleMaster) crackleMaster.gain.value = v;
+    /* The glass edge being dragged across the board (from your recording, so only where the clip is loaded). `level`
+       is 0..1, how fast the eyepiece is being dragged; call it every frame, with 0 when it is lifted or still.
+       The recording is only a fraction of a second long, and repeating it end to end made a steady beat that sounded
+       almost musical. So it is played granularly instead: a stream of tiny overlapping grains (60 to 120 ms), each
+       taken from a random place in the recording at a slightly different pitch, at irregular intervals. The result is
+       one continuous scrape that never repeats on a beat. Speed sets the loudness, the pitch and how dense it is. */
+    glassDrag(level) {
+      if (!GLASS_DRAG_ENABLED || !ctx || !clips.drag || !dragBus || vols.drag <= 0) return;
+      const t = ctx.currentTime;
+      const on = level > 0.04;
+      dragBus.gain.setTargetAtTime(on ? 0.35 + 0.65 * Math.min(1, level) : 0, t, on ? 0.05 : 0.06);
+      if (!on) return;
+      const buf = clips.drag;
+      const lvl = Math.min(1, level);
+      if (dragNext < t) dragNext = t + 0.005;             // (re)start: nothing is playing
+      while (dragNext < t + 0.22) {                       // keep grains scheduled ahead of time, so a slow frame cannot leave a gap
+        const dur = 0.06 + Math.random() * 0.06;          // length of this grain, in seconds of the recording
+        const rate = (0.9 + 0.2 * lvl) * (0.9 + Math.random() * 0.2);
+        const span = dur * rate;                          // how much of the recording it covers
+        const room = Math.max(0, buf.duration - span - 0.02);
+        const src = ctx.createBufferSource();
+        src.buffer = buf;
+        src.playbackRate.value = rate;
+        const g = ctx.createGain();
+        g.gain.setValueCurveAtTime(grainWindow, dragNext, dur);       // a smooth bell, so grains blend with no clicks
+        src.connect(g).connect(dragBus);
+        src.start(dragNext, 0.01 + Math.random() * room, span);
+        dragNext += dur * (0.34 + Math.random() * 0.32) * (1.1 - 0.35 * lvl);   // irregular spacing: about two or three grains overlap
+      }
     },
     /* Film crackle while the eyepiece is rubbing the film. `level` is 0..1 (how hard), `dtMs` the time
        since the last call. Sparse, random, sharp little ticks; now and then a short crinkle of several
        in a row, like acetate flexing. Silent at level 0. Needs the audio unlocked by an earlier press. */
     crackle(level, dtMs) {
-      if (!ctx || !crackleMaster || crackleVol <= 0 || level < 0.03) return;
+      if (!ctx || !crackleMaster || vols.crackle <= 0 || level < 0.03) return;
       const expected = (70 * Math.pow(level, 1.2) * dtMs) / 1000;
       const n = Math.floor(expected) + (Math.random() < expected % 1 ? 1 : 0);
       for (let i = 0; i < n; i++) {
@@ -186,34 +258,35 @@ export function createSounds({ clickVolume = 0.6, slideVolume = 0.5, crackleVolu
     },
     /* n detents in quick succession, e.g. when the ring is turned fast */
     click(n = 1) {
-      if (vol <= 0 || !ensure()) return;
+      if (vols.tick <= 0 || !ensure()) return;
       const count = Math.min(n, 4);
       const t0 = ctx.currentTime + 0.002;
       // the ordinary ticks are kept light, so the notch at a numbered point clearly stands out from them
-      for (let i = 0; i < count; i++) clickAt(t0 + i * 0.008, SUBCLICK * (0.8 + Math.random() * 0.3) * (i ? 0.8 : 1));
+      for (let i = 0; i < count; i++) clickAt(t0 + i * 0.008, SUBCLICK * (0.8 + Math.random() * 0.3) * (i ? 0.8 : 1), bus.tick);
     },
     /* the ring dropping into a numbered notch: a crisp, slightly higher "tock" than the ordinary
        detents, so catching a number is felt as well as seen */
     notch() {
-      if (vol <= 0 || !ensure()) return;
+      if (vols.notch <= 0 || !ensure()) return;
       const t = ctx.currentTime + 0.002;
-      noiseBurst(t, { freq: 3400 * jitter(0.06), q: 1.1, peak: 1.25, decay: 0.014 });
-      tone(t, { type: "triangle", from: 3000 * jitter(0.04), to: 2100, peak: 0.34, decay: 0.012, sweep: 0.008 });
-      tone(t, { type: "sine", from: 300 * jitter(0.05), to: 130, peak: 0.9, decay: 0.05, sweep: 0.025 });
+      noiseBurst(t, { freq: 3400 * jitter(0.06), q: 1.1, peak: 1.25, decay: 0.014 }, bus.notch);
+      tone(t, { type: "triangle", from: 3000 * jitter(0.04), to: 2100, peak: 0.34, decay: 0.012, sweep: 0.008 }, bus.notch);
+      tone(t, { type: "sine", from: 300 * jitter(0.05), to: 130, peak: 0.9, decay: 0.05, sweep: 0.025 }, bus.notch);
     },
     /* the ring settling into a numbered point: a firmer click than the ordinary detents */
     lock() {
-      if (vol <= 0 || !ensure()) return;
+      if (vols.notch <= 0 || !ensure()) return;
       const t = ctx.currentTime + 0.002;
-      clickAt(t, 1.25);
-      tone(t + 0.004, { type: "sine", from: 150, to: 70, peak: 0.55, decay: 0.05, sweep: 0.04 });
+      clickAt(t, 1.25, bus.notch);
+      tone(t + 0.004, { type: "sine", from: 150, to: 70, peak: 0.55, decay: 0.05, sweep: 0.04 }, bus.notch);
     },
     /* The glass being pulled up off the matte board: a very quiet, soft unsticking. A faint low "tk" as the
        contact lets go, then a gentle rub of air and surface that fades away. Nothing pitched and nothing bright. */
     lift() {
-      if (vol <= 0 || !ensure()) return;
+      if (vols.lift <= 0 || !ensure()) return;
+      if (clips.lift) { playClip(clips.lift, bus.lift); return; }
       const t = ctx.currentTime + 0.002;
-      const soft = softBus();
+      const soft = softBus("lift");
       noiseBurst(t, { type: "lowpass", freq: 900 * jitter(0.08), q: 0.5, peak: 0.16, decay: 0.014, attack: 0.002 }, soft);
       const src = ctx.createBufferSource();
       src.buffer = noise;
@@ -231,9 +304,10 @@ export function createSounds({ clickVolume = 0.6, slideVolume = 0.5, crackleVolu
        the matte surface, and only the faintest glassy colour, which dies almost at once; then a smaller second
        touch as it settles. */
     place() {
-      if (vol <= 0 || !ensure()) return;
+      if (vols.place <= 0 || !ensure()) return;
+      if (clips.place) { playClip(clips.place, bus.place); return; }
       const t = ctx.currentTime + 0.002;
-      const soft = softBus();
+      const soft = softBus("place");
       const touch = (at, k) => {
         noiseBurst(at, { type: "lowpass", freq: 1500 * jitter(0.08), q: 0.6, peak: 0.34 * k, decay: 0.03, attack: 0.001 }, soft);   // the thump
         noiseBurst(at, { freq: 1100 * jitter(0.1), q: 0.55, peak: 0.12 * k, decay: 0.055 }, soft);                                  // the matte brush
@@ -252,10 +326,10 @@ export function createSounds({ clickVolume = 0.6, slideVolume = 0.5, crackleVolu
     },
     /* the dull stop at either end of the dial */
     thud() {
-      if (vol <= 0 || !ensure()) return;
+      if (vols.notch <= 0 || !ensure()) return;
       const t = ctx.currentTime + 0.002;
-      noiseBurst(t, { freq: 700, q: 0.7, peak: 0.55, decay: 0.05 });
-      tone(t, { type: "sine", from: 120, to: 55, peak: 0.9, decay: 0.09, sweep: 0.06 });
+      noiseBurst(t, { freq: 700, q: 0.7, peak: 0.55, decay: 0.05 }, bus.notch);
+      tone(t, { type: "sine", from: 120, to: 55, peak: 0.9, decay: 0.09, sweep: 0.06 }, bus.notch);
     },
   };
 }

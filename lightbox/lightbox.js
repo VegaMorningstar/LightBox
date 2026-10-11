@@ -1,14 +1,14 @@
 /* LightBox — contact-sheet-on-a-light-box effect.
  *
  *   import { mountLightBox } from "./lightbox/lightbox.js";
- *   mountLightBox(document.querySelector("#sheet"), { photos: ["a.jpg", "b.jpg"], zoom: 1.2, shadow: 1.8, shadowFade: 0.85, clickVolume: 0.6, slideVolume: 0.03, crackleVolume: 1, filmDrag: 1, filmFlutter: 1, stacking: 1, panelFalloff: 1, panelGlow: 1, panelGrain: 1, lightBleed: 1 });
+ *   mountLightBox(document.querySelector("#sheet"), { photos: ["a.jpg", "b.jpg"], zoom: 1.2, shadow: 1.8, shadowFade: 0.85, volumes: { place: 0.3, drag: 0.3 }, filmDrag: 1, filmFlutter: 1, stacking: 1, panelFalloff: 1, panelGlow: 1, panelGrain: 1, lightBleed: 1 });
  *
  * The sheet shows inverted "negatives". A draggable eyepiece sits on top of it: liquid glass
  * around a black bezel (turn it to zoom), and a clear inner lens that shows the area underneath
  * magnified, and as a positive.
  */
 
-import { createSounds } from "./sounds.js";
+import { createSounds, DEFAULT_VOLUMES, GLASS_DRAG_ENABLED } from "./sounds.js";
 import { buildDial, buildTrim, setDialLight, DEG_PER_ZOOM, DETENTS, GLASS_RATIO, ZOOM_MAX, ZOOM_MIN } from "./dial.js";
 import { createGlass, createLens } from "./glass.js";
 import { createSpecks } from "./dust.js";
@@ -158,7 +158,15 @@ function buildControls(rows, { onOrganize, sliders = true } = {}) {
   });
 
   const setters = {};
-  for (const { key, name, min, max, step, value, onInput } of rows) {
+  let lastGroup = null;
+  for (const { group, key, name, min, max, step, value, onInput } of rows) {
+    if (sliders && group && group !== lastGroup) {
+      const h = document.createElement("div");
+      h.className = "lb-nav-group";
+      h.textContent = group;
+      panel.append(h);
+      lastGroup = group;
+    }
     const label = document.createElement("label");
     const text = document.createElement("span");
     text.textContent = name;
@@ -176,7 +184,7 @@ function buildControls(rows, { onOrganize, sliders = true } = {}) {
   return { wrap: nav, setters };
 }
 
-export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFade = 0.85, clickVolume = 0.6, slideVolume = 0.03, crackleVolume = 1, filmDrag = 1, filmFlutter = 1, stacking = 1, panelFalloff = 1, panelGlow = 1, panelGrain = 1, lightBleed = 1, size, controls = true, sliders = true } = {}) {
+export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFade = 0.85, volumes = {}, filmDrag = 1, filmFlutter = 1, stacking = 1, panelFalloff = 1, panelGlow = 1, panelGrain = 1, lightBleed = 1, size, controls = true, sliders = true } = {}) {
   root.classList.add("lb-root");
   const stage = div("lb-stage");
   root.replaceChildren(stage);
@@ -297,6 +305,8 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     const eyeSlide = Math.min(1, Math.hypot(eyeV.x, eyeV.y) * touch / 1.4);
     sounds.slide(Math.max(eyeSlide, film ? film.moveSlide : 0));
     sounds.crackle(film ? Math.max(film.contact, film.moveRub) : 0, dt);
+    // The glass edge dragging across the board: only while the eyepiece is down on the surface and moving.
+    sounds.glassDrag(Math.hypot(eyeV.x, eyeV.y) * touch / 1.6);
     const done = !coasting && !filmMoving && lift === liftGoal && Math.abs(goal.x - cur.x) < 0.2 && Math.abs(goal.y - cur.y) < 0.2;
     if (done) { cur.x = goal.x; cur.y = goal.y; eyeV.x = eyeV.y = 0; sounds.slide(0); }
     render();
@@ -403,7 +413,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
 
   let setters = {};
   // detent clicks: one per 0.05x tick the dial passes, a thud at each end stop
-  const sounds = createSounds({ clickVolume, slideVolume, crackleVolume });
+  const sounds = createSounds({ volumes });
   const detentOf = (z) => Math.floor((z - ZOOM_MIN) / 0.05 + 1e-6);
   let atStop = false;
 
@@ -426,20 +436,26 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
   setZoom(zoom, { silent: true });
 
   if (controls) {
+    const vols = { ...DEFAULT_VOLUMES, ...volumes };
     const c = buildControls([
-      { key: "zoom", name: "Magnification", min: ZOOM_MIN, max: ZOOM_MAX, step: 0.05, value: zoom, onInput: setZoom },
-      { key: "shadow", name: "Shadow strength", min: 0, max: 6, step: 0.05, value: shadow, onInput: setShadow },
-      { key: "fade", name: "Shadow fade", min: 0.1, max: 3, step: 0.05, value: shadowFade, onInput: setFade },
-      { key: "stacking", name: "Film stacking", min: 0, max: 1, step: 0.05, value: stacking, onInput: (v) => { stacking_ = v; if (sceneRef) sceneRef.stack = v; film?.setStack(v); render(); } },
-      { key: "falloff", name: "Panel falloff", min: 0, max: 2, step: 0.05, value: panelFalloff, onInput: (v) => { falloff = v; panel.style.background = panelBackground(v); if (sceneRef) sceneRef.fall = v; render(); } },
-      { key: "glow", name: "Panel glow", min: 0, max: 2, step: 0.05, value: panelGlow, onInput: (v) => { glow = v; glowEl.style.background = panelGlowBackground(v); if (sceneRef) sceneRef.glow = v; render(); } },
-      { key: "grain", name: "Panel grain", min: 0, max: 2, step: 0.05, value: panelGrain, onInput: (v) => { grain = v; grainEl.style.opacity = String(Math.min(1, v / 2)); if (sceneRef) sceneRef.grain = v; render(); } },
-      { key: "bleed", name: "Light bleed", min: 0, max: 2, step: 0.05, value: lightBleed, onInput: (v) => { bleed = v; render(); } },
-      { key: "filmDrag", name: "Film drag", min: 0, max: 2, step: 0.05, value: filmDrag, onInput: (v) => { filmCfg.push = v; } },
-      { key: "filmFlutter", name: "Film flutter", min: 0, max: 2, step: 0.05, value: filmFlutter, onInput: (v) => { filmCfg.flutter = v; } },
-      { key: "volume", name: "Click volume", min: 0, max: 1, step: 0.05, value: clickVolume, onInput: (v) => sounds.setClickVolume(v) },
-      { key: "crackle", name: "Film crackle volume", min: 0, max: 1, step: 0.05, value: crackleVolume, onInput: (v) => sounds.setCrackleVolume(v) },
-      { key: "slide", name: "Slide volume", min: 0, max: 1, step: 0.05, value: slideVolume, onInput: (v) => sounds.setSlideVolume(v) },
+      { group: "Eyepiece", key: "zoom", name: "Magnification", min: ZOOM_MIN, max: ZOOM_MAX, step: 0.05, value: zoom, onInput: setZoom },
+      { group: "Rim shadow", key: "shadow", name: "Shadow strength", min: 0, max: 6, step: 0.05, value: shadow, onInput: setShadow },
+      { group: "Rim shadow", key: "fade", name: "Shadow fade", min: 0.1, max: 3, step: 0.05, value: shadowFade, onInput: setFade },
+      { group: "Light box", key: "falloff", name: "Panel falloff", min: 0, max: 2, step: 0.05, value: panelFalloff, onInput: (v) => { falloff = v; panel.style.background = panelBackground(v); if (sceneRef) sceneRef.fall = v; render(); } },
+      { group: "Light box", key: "glow", name: "Panel glow", min: 0, max: 2, step: 0.05, value: panelGlow, onInput: (v) => { glow = v; glowEl.style.background = panelGlowBackground(v); if (sceneRef) sceneRef.glow = v; render(); } },
+      { group: "Light box", key: "grain", name: "Panel grain", min: 0, max: 2, step: 0.05, value: panelGrain, onInput: (v) => { grain = v; grainEl.style.opacity = String(Math.min(1, v / 2)); if (sceneRef) sceneRef.grain = v; render(); } },
+      { group: "Light box", key: "bleed", name: "Light bleed", min: 0, max: 2, step: 0.05, value: lightBleed, onInput: (v) => { bleed = v; render(); } },
+      { group: "Film", key: "stacking", name: "Film stacking", min: 0, max: 1, step: 0.05, value: stacking, onInput: (v) => { stacking_ = v; if (sceneRef) sceneRef.stack = v; film?.setStack(v); render(); } },
+      { group: "Film", key: "filmDrag", name: "Film drag", min: 0, max: 2, step: 0.05, value: filmDrag, onInput: (v) => { filmCfg.push = v; } },
+      { group: "Film", key: "filmFlutter", name: "Film flutter", min: 0, max: 2, step: 0.05, value: filmFlutter, onInput: (v) => { filmCfg.flutter = v; } },
+      { group: "Sound · master", key: "vol_master", name: "Master volume", min: 0, max: 1, step: 0.05, value: vols.master, onInput: (v) => sounds.setVolume("master", v) },
+      { group: "Sound · dial", key: "vol_tick", name: "Dial ticks", min: 0, max: 1, step: 0.05, value: vols.tick, onInput: (v) => sounds.setVolume("tick", v) },
+      { group: "Sound · dial", key: "vol_notch", name: "Notch & end stops", min: 0, max: 1, step: 0.05, value: vols.notch, onInput: (v) => sounds.setVolume("notch", v) },
+      { group: "Sound · lifting", key: "vol_lift", name: "Lift", min: 0, max: 1, step: 0.05, value: vols.lift, onInput: (v) => sounds.setVolume("lift", v) },
+      { group: "Sound · lifting", key: "vol_place", name: "Set-down", min: 0, max: 1, step: 0.05, value: vols.place, onInput: (v) => sounds.setVolume("place", v) },
+      ...(GLASS_DRAG_ENABLED ? [{ group: "Sound · sliding", key: "vol_drag", name: "Glass drag", min: 0, max: 1, step: 0.05, value: vols.drag, onInput: (v) => sounds.setVolume("drag", v) }] : []),
+      { group: "Sound · sliding", key: "vol_slide", name: "Eyepiece slide", min: 0, max: 1, step: 0.05, value: vols.slide, onInput: (v) => sounds.setVolume("slide", v) },
+      { group: "Sound · sliding", key: "vol_crackle", name: "Film crackle", min: 0, max: 1, step: 0.05, value: vols.crackle, onInput: (v) => sounds.setVolume("crackle", v) },
     ], { onOrganize: () => { film?.reset(); kick(); }, sliders });
     setters = c.setters;
     root.classList.add("lb-has-nav");
