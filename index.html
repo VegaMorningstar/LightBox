@@ -20,11 +20,16 @@
 </head>
 <body>
   <main id="sheet" aria-label="Photo contact sheet"></main>
-  <div class="hint">move the light</div>
+  <div class="hint">drag the glass · turn the ring</div>
   <script type="module">
     import { mountLightBox } from "./lightbox/lightbox.js";
-    const { photos } = await (await fetch("photos.json")).json();
-    mountLightBox(document.getElementById("sheet"), { photos });
+    try {
+      const { photos } = await (await fetch("photos.json")).json();
+      mountLightBox(document.getElementById("sheet"), { photos });
+    } catch (err) {
+      console.error(err);
+      document.getElementById("sheet").textContent = `LightBox failed to start: ${err.message}`;
+    }
   </script>
 </body>
 </html>

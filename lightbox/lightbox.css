@@ -18,19 +18,6 @@
 }
 .lb-stage > * { grid-area: 1 / 1; }
 
-/* the light that grows under the pointer */
-.lb-glow {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: radial-gradient(
-    circle at var(--x, -999px) var(--y, -999px),
-    var(--lb-lit) 0,
-    color-mix(in srgb, var(--lb-lit) 80%, var(--lb-bg)) calc(var(--r, 0px) * 0.55),
-    transparent var(--r, 0px)
-  );
-}
-
 .lb-sheet {
   --b: calc(var(--fw) * 0.21);          /* sprocket band width */
   --g: calc(var(--fw) * 0.06);          /* gap between frames */
@@ -127,18 +114,193 @@
   opacity: .55;
 }
 
-/* POSITIVE layer: revealed only inside the growing light circle */
-.lb-pos {
-  --m: radial-gradient(
-    circle at var(--x, -999px) var(--y, -999px),
-    #000 calc(var(--r, 0px) * 0.62),
-    transparent var(--r, 0px)
-  );
-  -webkit-mask-image: var(--m);
-          mask-image: var(--m);
+/* POSITIVE copy lives inside the eyepiece (see below) */
+
+/* EYEPIECE: black ring, clear glass, magnified positive inside */
+.lb-loupe {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: var(--Do);
+  height: var(--Do);
+  border-radius: 50%;
+  z-index: 3;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  will-change: transform;
+  outline: none;
 }
-.lb-pos .lb-img { box-shadow: 0 0 calc(var(--fw) * .12) rgba(255, 214, 140, .35); }
+.lb-loupe.is-drag,
+.lb-loupe.is-turn { cursor: grabbing; }
+
+/* the glass disc around the ring: shadow, and a plain translucent look until the shader is ready */
+.lb-skirt {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, rgba(255, 255, 255, .2), rgba(255, 255, 255, .05) 70%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .45), 0 18px 34px rgba(60, 40, 10, .28);
+  pointer-events: none;
+}
+.lb-loupe.has-gl .lb-skirt { background: none; box-shadow: 0 18px 34px rgba(60, 40, 10, .28); }
+.lb-refract {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  transition: opacity .35s ease;
+  pointer-events: none;
+}
+.lb-loupe.has-gl .lb-refract { opacity: 1; }
+
+.lb-ring {
+  position: absolute;
+  inset: calc((var(--Do) - var(--D)) / 2);
+  border-radius: 50%;
+  background: radial-gradient(circle at 34% 28%, #46423e, #0e0d0c 68%);
+  box-shadow:
+    0 10px 22px rgba(30, 18, 4, .55),
+    0 2px 4px rgba(0, 0, 0, .6);
+  transition: box-shadow .2s ease;
+}
+.lb-loupe.is-drag .lb-ring,
+.lb-loupe.is-turn .lb-ring {
+  box-shadow: 0 22px 40px rgba(30, 18, 4, .5), 0 3px 6px rgba(0, 0, 0, .55);
+}
+/* the knurled, engraved bezel face turns with the ring; the lighting on it does not */
+.lb-dial {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  will-change: transform;
+}
+.lb-ring::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 62% 44% at 30% 22%, rgba(255, 255, 255, .17), transparent 66%),
+    radial-gradient(circle, transparent 58%, rgba(0, 0, 0, .32) 100%);
+}
+.lb-trim {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+}
+.lb-glass {
+  position: absolute;
+  inset: calc((var(--Do) - var(--D)) / 2 + var(--w));
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--lb-lit);         /* light shining up through the gaps */
+}
+.lb-lens {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+}
+.lb-nogl .lb-lens { display: none; }
+.lb-glass::after {                    /* the ring's shadow; nothing over the centre, the glass is clear */
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  pointer-events: none;
+  /* the ring casts an even shadow all the way round, so the glass reads as recessed inside it */
+  /* Strength stacks six copies of the same shadow, so values past 1 keep getting darker instead of
+     capping at fully opaque. Fade sets how far each copy reaches inward. */
+  --rim: inset 0 0 calc(var(--D) * .07 * var(--rf, 1)) calc(var(--D) * .012 * var(--rf, 1)) rgba(0, 0, 0, calc(.165 * var(--rs, 1)));
+  box-shadow:
+    inset 0 0 0 2px rgba(0, 0, 0, .75),
+    var(--rim), var(--rim), var(--rim), var(--rim), var(--rim), var(--rim),
+    inset 0 0 calc(var(--D) * .02) rgba(0, 0, 0, calc(.3 * var(--rs, 1)));
+}
+.lb-mag {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+  will-change: transform;
+  pointer-events: none;
+}
+
+/* "Sliders" nav bar: slim bar along the top, the controls drop down from it */
+.lb-has-nav .lb-stage { margin-top: 40px; }
+.lb-nav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 5;
+  font: 500 11px/1 ui-monospace, "SF Mono", Menlo, monospace;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  color: #5f5036;
+}
+.lb-nav-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-sizing: border-box;
+  width: 100%;
+  height: 40px;
+  padding: 0 clamp(16px, 3vw, 28px);
+  border: 0;
+  border-bottom: 1px solid rgba(60, 45, 20, .18);
+  background: color-mix(in srgb, var(--lb-bg) 82%, transparent);
+  -webkit-backdrop-filter: blur(10px);
+          backdrop-filter: blur(10px);
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.lb-nav-toggle:hover { color: #2a2218; }
+.lb-nav-toggle svg {
+  width: 10px;
+  height: 6px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  transition: transform .2s ease;
+}
+.lb-nav.is-open .lb-nav-toggle svg { transform: rotate(180deg); }
+.lb-nav-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-sizing: border-box;
+  width: min(470px, 100%);
+  padding: 16px clamp(16px, 3vw, 28px) 18px;
+  border: 1px solid rgba(60, 45, 20, .18);
+  border-top: 0;
+  border-radius: 0 0 14px 0;
+  background: color-mix(in srgb, var(--lb-bg) 88%, transparent);
+  -webkit-backdrop-filter: blur(14px);
+          backdrop-filter: blur(14px);
+  box-shadow: 0 14px 30px rgba(60, 40, 10, .2);
+}
+.lb-nav-panel[hidden] { display: none; }
+.lb-nav-panel label { display: flex; align-items: center; gap: 12px; }
+.lb-nav-panel label > span { width: 14em; flex: none; white-space: nowrap; }
+.lb-nav-panel output { min-width: 3em; text-align: right; letter-spacing: .06em; }
+.lb-nav-panel input[type="range"] { flex: 1; min-width: 0; accent-color: #2a2622; cursor: pointer; }
 
 @media (prefers-reduced-motion: reduce) {
+  .lb-ring, .lb-refract, .lb-nav-toggle svg { transition: none; }
   .lb-img img { transition: none; }
 }
