@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LightBox</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%231b1917'/%3E%3Crect x='4' y='3' width='8' height='10' fill='%23fff7e2'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="lightbox/lightbox.css">
+  <style>
+    html, body { margin: 0; background: #ddd0b6; }
+    body { min-height: 100vh; }
+    .lb-root { min-height: 100vh; }
+    .hint {
+      position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%);
+      font: 500 11px/1 ui-monospace, "SF Mono", Menlo, monospace;
+      letter-spacing: .22em; text-transform: uppercase;
+      color: #7a6a4c; pointer-events: none; z-index: 2;
+    }
+  </style>
+</head>
+<body>
+  <main id="sheet" aria-label="Photo contact sheet"></main>
+  <div class="hint">move the light</div>
+  <script type="module">
+    import { mountLightBox } from "./lightbox/lightbox.js";
+    const { photos } = await (await fetch("photos.json")).json();
+    mountLightBox(document.getElementById("sheet"), { photos });
+  </script>
+</body>
+</html>
