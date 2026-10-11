@@ -25,7 +25,11 @@
     import { mountLightBox } from "./lightbox/lightbox.js";
     try {
       const { photos } = await (await fetch("photos.json")).json();
-      mountLightBox(document.getElementById("sheet"), { photos });
+      // The sliders are for tuning on a local machine. The published page shows only Organize; add ?sliders to the
+      // address to bring them back.
+      const local = ["localhost", "127.0.0.1", "[::1]", ""].includes(location.hostname);
+      const sliders = local || new URLSearchParams(location.search).has("sliders");
+      mountLightBox(document.getElementById("sheet"), { photos, sliders });
     } catch (err) {
       console.error(err);
       document.getElementById("sheet").textContent = `LightBox failed to start: ${err.message}`;

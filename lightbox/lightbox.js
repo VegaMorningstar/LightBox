@@ -1,7 +1,7 @@
 /* LightBox — contact-sheet-on-a-light-box effect.
  *
  *   import { mountLightBox } from "./lightbox/lightbox.js";
- *   mountLightBox(document.querySelector("#sheet"), { photos: ["a.jpg", "b.jpg"], zoom: 1.2, shadow: 1.8, shadowFade: 0.85, clickVolume: 0.6, slideVolume: 0.03, crackleVolume: 1, filmDrag: 1, filmFlutter: 1, stacking: 1, panelFalloff: 1, panelGlow: 1, lightBleed: 1 });
+ *   mountLightBox(document.querySelector("#sheet"), { photos: ["a.jpg", "b.jpg"], zoom: 1.2, shadow: 1.8, shadowFade: 0.85, clickVolume: 0.6, slideVolume: 0.03, crackleVolume: 1, filmDrag: 1, filmFlutter: 1, stacking: 1, panelFalloff: 1, panelGlow: 1, panelGrain: 1, lightBleed: 1 });
  *
  * The sheet shows inverted "negatives". A draggable eyepiece sits on top of it: liquid glass
  * around a black bezel (turn it to zoom), and a clear inner lens that shows the area underneath
@@ -11,8 +11,9 @@
 import { createSounds } from "./sounds.js";
 import { buildDial, buildTrim, DEG_PER_ZOOM, DETENTS, GLASS_RATIO, ZOOM_MAX, ZOOM_MIN } from "./dial.js";
 import { createGlass, createLens } from "./glass.js";
+import { createSpecks } from "./dust.js";
 import { createFilm } from "./film.js";
-import { buildFilmFilter, createLensView, createNegView, panelBackground, panelGlowBackground, parseColor, readScene, warmNegatives } from "./raster.js";
+import { buildFilmFilter, createLensView, createNegView, GRAIN_TILE, grainCanvas, panelBackground, panelGlowBackground, parseColor, readScene, warmNegatives } from "./raster.js";
 
 const STRIP_DY = [0, 0.34, 0.12, 0.5, 0.05, 0.27];   // per-strip stagger, in frame widths
 const STRIP_ROT = [-0.3, 0.25, -0.15, 0.35, -0.25, 0.15]; // per-strip tilt, degrees
@@ -91,7 +92,7 @@ function buildEyepiece() {
 }
 
 /* A slim "Sliders" nav bar along the top; the sliders drop down from it, closed by default. */
-function buildControls(rows, { onOrganize } = {}) {
+function buildControls(rows, { onOrganize, sliders = true } = {}) {
   const nav = document.createElement("nav");
   nav.className = "lb-nav";
   nav.setAttribute("aria-label", "Sliders");
@@ -109,7 +110,8 @@ function buildControls(rows, { onOrganize } = {}) {
   organize.textContent = "Organize";
   organize.title = "Put the film back where it started";
   organize.addEventListener("click", () => onOrganize?.());
-  bar.append(toggle, organize);
+  bar.append(...(sliders ? [toggle] : []), organize);
+  if (!sliders) nav.classList.add("lb-nav-min");     // just the Organize button, on the right
 
   const panel = div("lb-nav-panel");
   panel.id = `lb-sliders-${Math.random().toString(36).slice(2, 7)}`;
@@ -135,13 +137,13 @@ function buildControls(rows, { onOrganize } = {}) {
     input.addEventListener("input", () => { show(input.value); onInput(Number(input.value)); });
     setters[key] = (v) => { input.value = v; show(v); };
     label.append(text, input, out);
-    panel.append(label);
+    if (sliders) panel.append(label);
   }
-  nav.append(bar, panel);
+  nav.append(bar, ...(sliders ? [panel] : []));
   return { wrap: nav, setters };
 }
 
-export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFade = 0.85, clickVolume = 0.6, slideVolume = 0.03, crackleVolume = 1, filmDrag = 1, filmFlutter = 1, stacking = 1, panelFalloff = 1, panelGlow = 1, lightBleed = 1, size, controls = true } = {}) {
+export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFade = 0.85, clickVolume = 0.6, slideVolume = 0.03, crackleVolume = 1, filmDrag = 1, filmFlutter = 1, stacking = 1, panelFalloff = 1, panelGlow = 1, panelGrain = 1, lightBleed = 1, size, controls = true, sliders = true } = {}) {
   root.classList.add("lb-root");
   const stage = div("lb-stage");
   root.replaceChildren(stage);
@@ -150,6 +152,11 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
   const loupe = buildEyepiece();
   const panel = div("lb-panel");        // the light box's own unevenness, over the board and the film
   const glowEl = div("lb-glow");          // brighter patches and colour drift, blended into the light
+  const specksEl = document.createElement("canvas");
+  specksEl.className = "lb-specks";        // dust on the panel
+  let specks = null;
+  const grainEl = div("lb-grain");        // the panel's matte surface
+  let grain = panelGrain;
   let falloff = panelFalloff;
   let glow = panelGlow;
   let stacking_ = stacking;
@@ -244,6 +251,20 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
   };
   const kick = () => { if (!raf) raf = requestAnimationFrame(tick); };
 
+  function drawSpecksDom() {
+    if (!specks) return;
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const W = stage.clientWidth, H = stage.offsetHeight;
+    if (specksEl.width !== Math.round(W * dpr) || specksEl.height !== Math.round(H * dpr)) {
+      specksEl.width = Math.round(W * dpr); specksEl.height = Math.round(H * dpr);
+    }
+    const c = specksEl.getContext("2d");
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.clearRect(0, 0, specksEl.width, specksEl.height);
+    c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    specks.draw(c);
+  }
+
   let lastWidth = 0;
   function layout() {
     const pad = Math.max(20, Math.min(56, root.clientWidth * 0.04));
@@ -277,7 +298,12 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
       buildSheet(photos, cols, fw, "lb-neg"),
       ...(glass && lens ? [buildSheet(photos, cols, fw, "lb-ghost"), buildSheet(photos, cols, fw, "lb-mult")] : []),
     );
-    stage.replaceChildren(filmLayer, panel, glowEl, loupe.el);
+    stage.replaceChildren(filmLayer, specksEl, panel, glowEl, grainEl, loupe.el);
+    specks = createSpecks(stage.clientWidth, stage.offsetHeight);
+    drawSpecksDom();
+    grainEl.style.backgroundImage = `url(${grainCanvas().toDataURL()})`;
+    grainEl.style.backgroundSize = `${GRAIN_TILE}px ${GRAIN_TILE}px`;
+    grainEl.style.opacity = String(Math.min(1, grain / 2));
     panel.style.background = panelBackground(falloff);
     glowEl.style.background = panelGlowBackground(glow);
 
@@ -304,7 +330,8 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
           negView.resize(negSide);
           view = createLensView(scene, lens.dpr);
           view.resize(G + lensPad * 2);
-          scene.stack = stacking_; scene.fall = falloff; scene.glow = glow;
+          scene.specks = specks;
+          scene.stack = stacking_; scene.fall = falloff; scene.glow = glow; scene.grain = grain;
           film = createFilm(scene, filmCfg);
           sceneRef = scene;
           loupe.el.classList.add("has-gl");
@@ -351,13 +378,14 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
       { key: "stacking", name: "Film stacking", min: 0, max: 1, step: 0.05, value: stacking, onInput: (v) => { stacking_ = v; if (sceneRef) sceneRef.stack = v; film?.setStack(v); render(); } },
       { key: "falloff", name: "Panel falloff", min: 0, max: 2, step: 0.05, value: panelFalloff, onInput: (v) => { falloff = v; panel.style.background = panelBackground(v); if (sceneRef) sceneRef.fall = v; render(); } },
       { key: "glow", name: "Panel glow", min: 0, max: 2, step: 0.05, value: panelGlow, onInput: (v) => { glow = v; glowEl.style.background = panelGlowBackground(v); if (sceneRef) sceneRef.glow = v; render(); } },
+      { key: "grain", name: "Panel grain", min: 0, max: 2, step: 0.05, value: panelGrain, onInput: (v) => { grain = v; grainEl.style.opacity = String(Math.min(1, v / 2)); if (sceneRef) sceneRef.grain = v; render(); } },
       { key: "bleed", name: "Light bleed", min: 0, max: 2, step: 0.05, value: lightBleed, onInput: (v) => { bleed = v; render(); } },
       { key: "filmDrag", name: "Film drag", min: 0, max: 2, step: 0.05, value: filmDrag, onInput: (v) => { filmCfg.push = v; } },
       { key: "filmFlutter", name: "Film flutter", min: 0, max: 2, step: 0.05, value: filmFlutter, onInput: (v) => { filmCfg.flutter = v; } },
       { key: "volume", name: "Click volume", min: 0, max: 1, step: 0.05, value: clickVolume, onInput: (v) => sounds.setClickVolume(v) },
       { key: "crackle", name: "Film crackle volume", min: 0, max: 1, step: 0.05, value: crackleVolume, onInput: (v) => sounds.setCrackleVolume(v) },
       { key: "slide", name: "Slide volume", min: 0, max: 1, step: 0.05, value: slideVolume, onInput: (v) => sounds.setSlideVolume(v) },
-    ], { onOrganize: () => { film?.reset(); kick(); } });
+    ], { onOrganize: () => { film?.reset(); kick(); }, sliders });
     setters = c.setters;
     root.classList.add("lb-has-nav");
     root.append(c.wrap);

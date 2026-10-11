@@ -100,6 +100,66 @@ function paintPanel(ctx, W, H, fall, glow) {
   }
 }
 
+/* ---------- the panel's matte grain ----------
+ * A frosted diffuser has a fine micro-texture that scatters the light, which is what makes a light box's glow
+ * even. It belongs to the panel, so it stays put while film slides over it, and it magnifies in the lens. It
+ * modulates the light multiplicatively (like the panel falloff), so it shows on the board and through clear
+ * film and barely at all on the dark borders. One seamless tile feeds the page (a CSS background) and both
+ * glasses (a canvas pattern). `grain` scales it (0 = a perfectly smooth panel). */
+export const GRAIN_TILE = 256;       // css px per tile
+const GRAIN_RES = 2;                 // tile pixels per css px: grain finer than a pixel on a standard screen
+export const GRAIN_MAX = 0.16;       // darkest speck, as a fraction of the light, at grain = 2
+let grainTile = null;
+
+export function grainCanvas() {
+  if (grainTile) return grainTile;
+  const n = GRAIN_TILE * GRAIN_RES;
+  let seed = 0x9e3779b9;
+  const rnd = () => { seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  const raw = new Float32Array(n * n);
+  for (let i = 0; i < raw.length; i++) raw[i] = rnd();
+  // wrap-around box blur, so the tile repeats without a seam
+  const blur = (src, r) => {
+    const tmp = new Float32Array(n * n), out = new Float32Array(n * n), k = 2 * r + 1;
+    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) { let a = 0; for (let d = -r; d <= r; d++) a += src[y * n + ((x + d + n) % n)]; tmp[y * n + x] = a / k; }
+    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) { let a = 0; for (let d = -r; d <= r; d++) a += tmp[((y + d + n) % n) * n + x]; out[y * n + x] = a / k; }
+    return out;
+  };
+  const soft = blur(raw, 2);            // clumps a couple of pixels across
+  let lo = 1, hi = 0;
+  for (let i = 0; i < soft.length; i++) { lo = Math.min(lo, soft[i]); hi = Math.max(hi, soft[i]); }
+  const c = document.createElement("canvas");
+  c.width = c.height = n;
+  const t = c.getContext("2d");
+  const img = t.createImageData(n, n);
+  for (let i = 0; i < n * n; i++) {
+    // fine speckle plus softer clumps, stretched to 0..1, then bent so only some specks are strong
+    const clump = (soft[i] - lo) / (hi - lo || 1);
+    let v = Math.pow(0.55 * raw[i] + 0.45 * clump, 1.5);
+    v = Math.min(1, v * 1.35);
+    const g = Math.round(255 * (1 - GRAIN_MAX * v));      // 255 = no effect, darker = a speck that scatters light away
+    img.data[i * 4] = img.data[i * 4 + 1] = img.data[i * 4 + 2] = g;
+    img.data[i * 4 + 3] = 255;
+  }
+  t.putImageData(img, 0, 0);
+  grainTile = c;
+  return c;
+}
+
+const grainPatterns = new WeakMap();
+function paintGrain(ctx, W, H, grain) {
+  if (grain <= 0) return;
+  let pat = grainPatterns.get(ctx);
+  if (!pat) { pat = ctx.createPattern(grainCanvas(), "repeat"); grainPatterns.set(ctx, pat); }
+  ctx.save();
+  ctx.globalCompositeOperation = "multiply";
+  ctx.globalAlpha = Math.min(1, grain / 2);
+  ctx.scale(1 / GRAIN_RES, 1 / GRAIN_RES);
+  ctx.fillStyle = pat;
+  ctx.fillRect(0, 0, W * GRAIN_RES, H * GRAIN_RES);
+  ctx.restore();
+}
+
 export function parseColor(str) {
   const c = document.createElement("canvas");
   c.width = c.height = 1;
@@ -263,6 +323,7 @@ export async function readScene(stage, root) {
     stack: 1,     // 0 = film blends by transparency, 1 = stacked film multiplies the light
     fall: 1,      // panel falloff
     glow: 1,      // panel glow (brighter patches and colour drift)
+    grain: 1,     // the panel's matte grain
   };
   /* Stacked negatives multiply: what shows is (lower * upper) / board, where `board` is what clear film shows
      over the bare panel. Dividing the board out keeps the colour of a lone strip unchanged. */
@@ -488,7 +549,11 @@ function createWindowView(scene, dpr, { mode, bg }) {
       ctx.setTransform(k, 0, 0, k, (canvas.width - k * 2 * cx) / 2, (canvas.height - k * 2 * cy) / 2);
       const half = size / 2 / scale;
       drawScene(ctx, scene, { mode, view: { x0: cx - half, y0: cy - half, x1: cx + half, y1: cy + half } });
+      scene.specks?.draw(ctx);                                       // dust lying on the panel
       paintPanel(ctx, scene.W, scene.H, scene.fall, scene.glow);      // the light box itself is brighter in the middle
+      // ...and its surface is matte, not smooth. The grain belongs to the panel, so it is left out of the lens:
+      // the photo seen through the eyepiece must not pick up any extra grain.
+      if (mode !== "pos") paintGrain(ctx, scene.W, scene.H, scene.grain);
     },
   };
 }
