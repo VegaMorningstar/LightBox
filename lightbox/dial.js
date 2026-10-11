@@ -11,6 +11,7 @@ export const ZOOM_MIN = 1;
 export const ZOOM_MAX = 2.5;
 export const DEG_PER_ZOOM = 180;          // ring rotation per 1.0× of magnification
 export const GLASS_RATIO = 1.36;          // outer glass diameter / ring diameter
+export const DETENTS = [1, 1.5, 2, 2.5];  // the numbered points on the scale, where the ring locks
 
 const INK = "#ece4d0";
 
@@ -63,18 +64,22 @@ export function buildDial() {
     }
   }
 
-  // maker's mark in the blank stretch of the dial, between 2.5 and 1
-  const arcR = 81.5;
-  const pt = (deg) => `${(arcR * Math.sin((deg * Math.PI) / 180)).toFixed(3)} ${(-arcR * Math.cos((deg * Math.PI) / 180)).toFixed(3)}`;
-  const arcId = `lb-arc-${Math.random().toString(36).slice(2, 8)}`;
-  el("path", { id: arcId, d: `M ${pt(8)} A ${arcR} ${arcR} 0 0 1 ${pt(82)}`, fill: "none" }, svg);
-  const mark = el("text", {
-    fill: INK, "fill-opacity": 0.85, "font-size": 5.2, "font-weight": 600, "letter-spacing": 1.6,
-    "text-anchor": "middle", "dominant-baseline": "central",
-    "font-family": '"DIN Condensed","Avenir Next Condensed","Futura","Arial Narrow",sans-serif',
-  }, svg);
-  const tp = el("textPath", { href: `#${arcId}`, startOffset: "50%" }, mark);
-  tp.textContent = "LIGHTBOX";
+  // maker's mark in the blank stretch of the dial, between 2.5 and 1. Each letter is set on the
+  // ring's own radius and turned to point outward, so the word bends with the dial.
+  const word = "LIGHTBOX";
+  const markR = 81.5;                 // concentric with the ring
+  const markStep = 3.7;               // degrees between letters
+  const markMid = 45;                 // middle of the blank stretch
+  [...word].forEach((ch, i) => {
+    const phi = markMid + (i - (word.length - 1) / 2) * markStep;
+    const t = el("text", {
+      transform: `rotate(${phi}) translate(0,-${markR})`,
+      "text-anchor": "middle", "dominant-baseline": "central",
+      fill: INK, "fill-opacity": 0.85, "font-size": 5.8, "font-weight": 600,
+      "font-family": '"DIN Condensed","Avenir Next Condensed","Futura","Arial Narrow",sans-serif',
+    }, svg);
+    t.textContent = ch;
+  });
   return svg;
 }
 

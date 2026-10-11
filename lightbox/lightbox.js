@@ -1,15 +1,15 @@
 /* LightBox — contact-sheet-on-a-light-box effect.
  *
  *   import { mountLightBox } from "./lightbox/lightbox.js";
- *   mountLightBox(document.querySelector("#sheet"), { photos: ["a.jpg", "b.jpg"], zoom: 1.2, shadow: 1.8, shadowFade: 0.85, clickVolume: 0.6 });
+ *   mountLightBox(document.querySelector("#sheet"), { photos: ["a.jpg", "b.jpg"], zoom: 1.2, shadow: 1.8, shadowFade: 0.85, clickVolume: 0.6, slideVolume: 0 });
  *
  * The sheet shows inverted "negatives". A draggable eyepiece sits on top of it: liquid glass
  * around a black bezel (turn it to zoom), and a clear inner lens that shows the area underneath
  * magnified, and as a positive.
  */
 
-import { createClicker } from "./clicks.js";
-import { buildDial, buildTrim, DEG_PER_ZOOM, GLASS_RATIO, ZOOM_MAX, ZOOM_MIN } from "./dial.js";
+import { createSounds } from "./sounds.js";
+import { buildDial, buildTrim, DEG_PER_ZOOM, DETENTS, GLASS_RATIO, ZOOM_MAX, ZOOM_MIN } from "./dial.js";
 import { createGlass, createLens } from "./glass.js";
 import { createLensView, rasterizeNegative, readScene } from "./raster.js";
 
@@ -69,7 +69,7 @@ function buildEyepiece() {
   const el = div("lb-loupe");
   el.tabIndex = 0;
   el.setAttribute("role", "img");
-  el.setAttribute("aria-label", "Eyepiece. Drag the glass to move it, turn the black ring or press plus and minus to change magnification, use the arrow keys to move.");
+  el.setAttribute("aria-label", "Eyepiece. Drag it to move it. Double-press and hold the black ring, then turn, or press plus and minus, to change magnification. Arrow keys also move it.");
   const skirt = div("lb-skirt");            // shadow + fallback look for the glass
   const refract = document.createElement("canvas");
   refract.className = "lb-refract";         // liquid-glass ring, drawn by glass.js
@@ -128,7 +128,7 @@ function buildControls(rows) {
   return { wrap: nav, setters };
 }
 
-export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFade = 0.85, clickVolume = 0.6, size, controls = true } = {}) {
+export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFade = 0.85, clickVolume = 0.6, slideVolume = 0, size, controls = true } = {}) {
   root.classList.add("lb-root");
   const stage = div("lb-stage");
   root.replaceChildren(stage);
@@ -170,13 +170,39 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     glass?.draw(cur.x, cur.y, D / 2);
   };
 
-  const tick = () => {
+  // Sliding on a board: remember how fast the eyepiece was moving when let go, then glide and
+  // slow down with friction. Position eases toward `goal`, and coasting just keeps moving `goal`.
+  const vel = { x: 0, y: 0 };          // px per ms
+  const FRICTION_MS = 330;             // time constant of the slide: bigger = glides further
+  const BOUNCE = 0.3;                  // share of speed kept when hitting an edge
+  const MAX_SPEED = 3;                 // px per ms
+  const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)");
+  let coasting = false;
+  let lastT = 0;
+
+  const coast = (dt) => {
+    const nx = goal.x + vel.x * dt, ny = goal.y + vel.y * dt;
+    goal.x = nx; goal.y = ny;
+    clamp();
+    if (goal.x !== nx) vel.x *= -BOUNCE;
+    if (goal.y !== ny) vel.y *= -BOUNCE;
+    const f = Math.exp(-dt / FRICTION_MS);
+    vel.x *= f; vel.y *= f;
+    if (Math.hypot(vel.x, vel.y) < 0.02) coasting = false;
+  };
+
+  const tick = (t) => {
+    const dt = Math.min(34, lastT ? t - lastT : 16);
+    lastT = t;
+    if (coasting) coast(dt);
+    const px = cur.x, py = cur.y;
     cur.x += (goal.x - cur.x) * 0.35;
     cur.y += (goal.y - cur.y) * 0.35;
-    const done = Math.abs(goal.x - cur.x) < 0.2 && Math.abs(goal.y - cur.y) < 0.2;
-    if (done) { cur.x = goal.x; cur.y = goal.y; }
+    sounds.slide(Math.hypot(cur.x - px, cur.y - py) / dt);
+    const done = !coasting && Math.abs(goal.x - cur.x) < 0.2 && Math.abs(goal.y - cur.y) < 0.2;
+    if (done) { cur.x = goal.x; cur.y = goal.y; sounds.slide(0); }
     render();
-    raf = done ? 0 : requestAnimationFrame(tick);
+    if (done) { raf = 0; lastT = 0; } else raf = requestAnimationFrame(tick);
   };
   const kick = () => { if (!raf) raf = requestAnimationFrame(tick); };
 
@@ -243,7 +269,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
 
   let setters = {};
   // detent clicks: one per 0.05x tick the dial passes, a thud at each end stop
-  const clicker = createClicker({ volume: clickVolume });
+  const sounds = createSounds({ clickVolume, slideVolume });
   const detentOf = (z) => Math.floor((z - ZOOM_MIN) / 0.05 + 1e-6);
   let atStop = false;
 
@@ -256,9 +282,9 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     render();
     if (silent) return;
     const crossed = Math.abs(detentOf(zoom) - detentOf(prev));
-    if (crossed) clicker.click(crossed);
+    if (crossed) sounds.click(crossed);
     const hitStop = zoom !== z;
-    if (hitStop && !atStop) clicker.thud();
+    if (hitStop && !atStop) sounds.thud();
     atStop = hitStop;
   }
   setZoom(zoom, { silent: true });
@@ -268,7 +294,8 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
       { key: "zoom", name: "Magnification", min: ZOOM_MIN, max: ZOOM_MAX, step: 0.05, value: zoom, onInput: setZoom },
       { key: "shadow", name: "Shadow strength", min: 0, max: 6, step: 0.05, value: shadow, onInput: setShadow },
       { key: "fade", name: "Shadow fade", min: 0.1, max: 3, step: 0.05, value: shadowFade, onInput: setFade },
-      { key: "volume", name: "Click volume", min: 0, max: 1, step: 0.05, value: clickVolume, onInput: (v) => clicker.setVolume(v) },
+      { key: "volume", name: "Click volume", min: 0, max: 1, step: 0.05, value: clickVolume, onInput: (v) => sounds.setClickVolume(v) },
+      { key: "slide", name: "Slide volume", min: 0, max: 1, step: 0.05, value: slideVolume, onInput: (v) => sounds.setSlideVolume(v) },
     ]);
     setters = c.setters;
     root.classList.add("lb-has-nav");
@@ -277,27 +304,139 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
 
   // drag
   const grab = { x: 0, y: 0 };
-  const pointerInStage = (e) => {
+  const lastPointer = { x: 0, y: 0 };
+  const pointerInStage = (x, y) => {
     const b = stage.getBoundingClientRect();
-    return { x: e.clientX - b.left, y: e.clientY - b.top };
+    return { x: x - b.left, y: y - b.top };
   };
+  const samples = [];                  // recent eyepiece positions, to measure the throw
+  const follow = () => {
+    const p = pointerInStage(lastPointer.x, lastPointer.y);
+    goal.x = p.x - grab.x; goal.y = p.y - grab.y;
+    clamp(); kick();
+    const now = performance.now();
+    samples.push({ t: now, x: goal.x, y: goal.y });
+    while (samples.length > 1 && now - samples[0].t > 100) samples.shift();
+  };
+  /* speed over the last ~100 ms; zero if the pointer had already stopped before release */
+  const throwVelocity = () => {
+    const now = performance.now();
+    const last = samples[samples.length - 1];
+    if (!last || now - last.t > 60 || samples.length < 2) return { x: 0, y: 0 };
+    const first = samples[0];
+    const dt = Math.max(1, last.t - first.t);
+    const vx = (last.x - first.x) / dt, vy = (last.y - first.y) / dt;
+    const k = Math.min(1, MAX_SPEED / Math.hypot(vx, vy) || 1);
+    return { x: vx * k, y: vy * k };
+  };
+  /* A release that happens outside the window (or over the browser UI) can go unreported, which
+     would leave the eyepiece "held" and following the pointer. So a drag also ends when we see a
+     move with no button down, when capture is lost, or when the window loses focus. */
+  const buttonUp = (e) => e.pointerType !== "touch" && e.buttons === 0;
+
   loupe.el.addEventListener("pointerdown", (e) => {
     e.preventDefault();
     loupe.el.setPointerCapture(e.pointerId);
-    const p = pointerInStage(e);
+    lastPointer.x = e.clientX; lastPointer.y = e.clientY;
+    sounds.unlock();                           // browsers only start audio from a gesture
+    coasting = false; vel.x = vel.y = 0;       // grabbing it stops a slide
+    goal.x = cur.x; goal.y = cur.y;            // hold it where it visibly is, not where it was heading
+    const p = pointerInStage(e.clientX, e.clientY);
     grab.x = p.x - goal.x; grab.y = p.y - goal.y;
+    samples.length = 0;
     dragging = true;
     loupe.el.classList.add("is-drag");
   });
   loupe.el.addEventListener("pointermove", (e) => {
     if (!dragging) return;
-    const p = pointerInStage(e);
-    goal.x = p.x - grab.x; goal.y = p.y - grab.y;
-    clamp(); kick();
+    if (buttonUp(e)) { drop(); return; }
+    lastPointer.x = e.clientX; lastPointer.y = e.clientY;
+    follow();
   });
-  const drop = () => { dragging = false; loupe.el.classList.remove("is-drag"); };
-  loupe.el.addEventListener("pointerup", drop);
+  function drop(release = false) {
+    if (!dragging) return;
+    dragging = false;
+    loupe.el.classList.remove("is-drag");
+    if (release === true && !reduceMotion.matches) {   // let go while moving: keep sliding
+      const v = throwVelocity();
+      if (Math.hypot(v.x, v.y) > 0.05) { vel.x = v.x; vel.y = v.y; coasting = true; kick(); }
+    }
+  }
+  loupe.el.addEventListener("pointerup", () => drop(true));
   loupe.el.addEventListener("pointercancel", drop);
+  loupe.el.addEventListener("lostpointercapture", () => { drop(); stopTurn(); });
+  // scrolling while holding keeps the eyepiece under the pointer
+  addEventListener("scroll", () => { if (dragging) follow(); }, { passive: true });
+  addEventListener("blur", () => { drop(); stopTurn(); });
+  document.addEventListener("visibilitychange", () => { if (document.hidden) { drop(); stopTurn(); } });
+
+  /* The numbered points on the scale are real detents. The ring catches on a number and holds there
+     while your hand keeps turning; after BREAK of extra travel it clicks free and moves again.
+     `ringTarget` is where the hand says the ring is; the ring itself (`zoom`) follows it, except
+     while it is held in a notch. After breaking free it catches up to the hand, so it never ends
+     up lagging behind. */
+  const BREAK = 0.06;       // extra turn (in zoom units, about 11 degrees) needed to break out of a notch
+  const CAPTURE = 0.012;    // how close to a number the ring has to get to drop into its notch
+  const SNAP_W = 0.03;
+  const nearest = (z) => DETENTS.reduce((a, b) => (Math.abs(b - z) < Math.abs(a - z) ? b : a));
+  let ringTarget = zoom;
+  let lockedAt = null;      // the number the ring is currently held on, if any
+  let atEnd = false;
+  let followRaf = 0;
+  let snapRaf = 0;
+
+  function catchUp() {       // ease the ring toward the hand, unless it is held
+    cancelAnimationFrame(followRaf);
+    const step = () => {
+      if (lockedAt !== null) return;
+      const gap = ringTarget - zoom;
+      if (Math.abs(gap) < 0.0008) { setZoom(ringTarget); return; }
+      setZoom(zoom + gap * 0.4);
+      followRaf = requestAnimationFrame(step);
+    };
+    followRaf = requestAnimationFrame(step);
+  }
+
+  function turnBy(dz) {
+    const prev = ringTarget;
+    const raw = prev + dz;
+    const next = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, raw));
+    if (next !== raw) { if (!atEnd) sounds.thud(); atEnd = true; } else atEnd = false;   // end stops
+    ringTarget = next;
+
+    if (lockedAt !== null) {
+      if (Math.abs(next - lockedAt) < BREAK) return;          // held in the notch
+      lockedAt = null;                                         // pushed through: click, then move again
+      sounds.lock();
+      catchUp();
+      return;
+    }
+    // did the hand cross a number, or arrive right at one?
+    const hit = DETENTS.find((d) => (prev - d) * (next - d) < 0 || (Math.abs(next - d) < CAPTURE && Math.abs(prev - d) >= CAPTURE));
+    if (hit !== undefined) {
+      if (Math.abs(next - hit) >= BREAK) { sounds.lock(); catchUp(); return; }   // flicked straight through
+      lockedAt = hit;
+      cancelAnimationFrame(followRaf);
+      setZoom(hit, { silent: true });                          // drops into the notch...
+      sounds.notch();                                          // ...with its own click
+      return;
+    }
+    catchUp();
+  }
+  function snapToDetent() {
+    const d = nearest(zoom);
+    const off = Math.abs(zoom - d);
+    if (off < 0.0005 || off > SNAP_W) return;
+    const from = zoom, t0 = performance.now(), dur = 130;
+    cancelAnimationFrame(snapRaf);
+    const step = (now) => {
+      const k = Math.min(1, (now - t0) / dur);
+      setZoom(from + (d - from) * (1 - Math.pow(1 - k, 3)), { silent: true });
+      if (k < 1) snapRaf = requestAnimationFrame(step);
+      else sounds.lock();
+    };
+    snapRaf = requestAnimationFrame(step);
+  }
 
   // turn the bezel: clockwise raises magnification, anticlockwise lowers it
   let turning = false;
@@ -306,26 +445,54 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     const b = loupe.el.getBoundingClientRect();
     return Math.atan2(e.clientY - (b.top + b.height / 2), e.clientX - (b.left + b.width / 2));
   };
+  /* A single press on the ring just holds and moves the eyepiece, like pressing anywhere on it.
+     A quick tap followed straight away by a second press-and-hold turns the ring. */
+  const DOUBLE_MS = 350;
+  let press = null;       // the current press on the ring, to tell a tap from a drag
+  let lastTap = null;     // when and where the last tap on the ring was released
   loupe.ring.addEventListener("pointerdown", (e) => {
+    const now = performance.now();
+    const isDouble = lastTap && now - lastTap.t < DOUBLE_MS && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 28;
+    press = { t: now, x: e.clientX, y: e.clientY };
+    if (!isDouble) return;                   // bubbles up: the eyepiece is picked up and moved
+    lastTap = null; press = null;
+    cancelAnimationFrame(snapRaf);
     e.preventDefault();
     e.stopPropagation();                     // the ring turns; it doesn't move the eyepiece
     loupe.ring.setPointerCapture(e.pointerId);
-    clicker.unlock();                        // browsers only start audio from a gesture
+    sounds.unlock();
     turning = true;
+    ringTarget = zoom; atEnd = false;
+    lockedAt = Math.abs(zoom - nearest(zoom)) < 0.0005 ? nearest(zoom) : null;
     lastAngle = angleOf(e);
     loupe.el.classList.add("is-turn");
   });
+  loupe.el.addEventListener("pointerup", (e) => {
+    const now = performance.now();
+    if (press && now - press.t < 260 && Math.hypot(e.clientX - press.x, e.clientY - press.y) < 8) {
+      lastTap = { t: now, x: e.clientX, y: e.clientY };
+    }
+    press = null;
+  });
   loupe.ring.addEventListener("pointermove", (e) => {
     if (!turning) return;
+    if (buttonUp(e)) { stopTurn(); return; }
     const a = angleOf(e);
     let d = a - lastAngle;
     if (d > Math.PI) d -= 2 * Math.PI;
     if (d < -Math.PI) d += 2 * Math.PI;
     lastAngle = a;
-    setZoom(zoom + ((d * 180) / Math.PI) / DEG_PER_ZOOM);
+    turnBy(((d * 180) / Math.PI) / DEG_PER_ZOOM);
   });
-  const stopTurn = () => { turning = false; loupe.el.classList.remove("is-turn"); };
-  loupe.ring.addEventListener("pointerup", stopTurn);
+  function stopTurn() { turning = false; loupe.el.classList.remove("is-turn"); }
+  loupe.ring.addEventListener("pointerup", () => {
+    const was = turning;
+    stopTurn();
+    if (!was) return;
+    cancelAnimationFrame(followRaf);
+    if (lockedAt === null) { setZoom(ringTarget, { silent: true }); snapToDetent(); }
+    lockedAt = null;
+  });
   loupe.ring.addEventListener("pointercancel", stopTurn);
 
   loupe.el.addEventListener("keydown", (e) => {
