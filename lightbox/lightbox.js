@@ -276,10 +276,12 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     // that fades back in as it touches down, so a throw that lands still rubs the film as it glides.
     const touch = 1 - smooth(lift);
     const filmMoving = film ? film.step(dt, { x: cur.x, y: cur.y, vx: eyeV.x * touch, vy: eyeV.y * touch, radius: Do / 2 }) : false;
-    // The slide sounds while the eyepiece rubs the film (a fast slide, not ordinary dragging) or a film
-    // strip is moving on the board. The crackle sounds while the eyepiece rubs the film, or a moving
-    // strip is riding over another one.
-    sounds.slide(film ? Math.max(film.contact, film.moveSlide) : 0);
+    // The slide sounds whenever the eyepiece is dragged or glides across the matte board, film under it or not,
+    // and it is silent while the eyepiece is lifted or standing still. It is louder the faster it moves. A film
+    // strip sliding on the board slides too. The crackle is separate: it sounds only where the eyepiece rubs the
+    // film, or a moving strip rides over another one.
+    const eyeSlide = Math.min(1, Math.hypot(eyeV.x, eyeV.y) * touch / 1.4);
+    sounds.slide(Math.max(eyeSlide, film ? film.moveSlide : 0));
     sounds.crackle(film ? Math.max(film.contact, film.moveRub) : 0, dt);
     const done = !coasting && !filmMoving && lift === liftGoal && Math.abs(goal.x - cur.x) < 0.2 && Math.abs(goal.y - cur.y) < 0.2;
     if (done) { cur.x = goal.x; cur.y = goal.y; eyeV.x = eyeV.y = 0; sounds.slide(0); }
