@@ -10,7 +10,10 @@
   background: var(--lb-bg);
   overflow: hidden;
   touch-action: pan-y;
+  user-select: none;                 /* dragging must never select the photos or the edge text */
+  -webkit-user-select: none;
 }
+.lb-root img { -webkit-user-drag: none; }
 
 .lb-stage {
   position: relative;
@@ -25,6 +28,7 @@
   --pitch: calc(var(--fh) + var(--g));
   --hp: calc(var(--pitch) / 4);         /* 4 sprocket holes per frame */
   --pt: calc(var(--g) * 2);             /* leader before first frame */
+  isolation: isolate;                   /* strips are stacked among themselves; the eyepiece always sits above them all */
   display: flex;
   justify-content: center;
   align-items: flex-start;
@@ -35,36 +39,57 @@
 
 .lb-strip {
   position: relative;
-  box-sizing: border-box;
   flex: none;
   width: calc(var(--fw) + var(--b) * 2);
-  padding: var(--pt) var(--b);
   margin-top: calc(var(--dy) * var(--fw));
   transform: rotate(var(--rot));
   transform-origin: 50% 0;
+}
+
+/* A strip is a stack of cells, one per frame. Each can shift and tilt a hair against the next,
+   which is how the film bends and flutters when it is dragged. Each cell carries its own film
+   base and its own see-through sprocket holes (four holes per frame, so the pattern lines up). */
+.lb-cell {
+  --ext: 5px;                            /* overlap with the next cell, so a tilt never shows a seam */
+  position: relative;
+  box-sizing: border-box;
+  width: 100%;
+  height: calc(var(--pitch) + var(--ext));
+  margin-bottom: calc(var(--ext) * -1);
+  padding: 0 var(--b);
+  transform-origin: 50% 0;
   background: var(--lb-film);
-  /* punch real, see-through sprocket holes */
   --hole-l: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' preserveAspectRatio='none'%3E%3Crect x='14' y='26' width='46' height='48' rx='14' ry='12'/%3E%3C/svg%3E");
   --hole-r: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' preserveAspectRatio='none'%3E%3Crect x='40' y='26' width='46' height='48' rx='14' ry='12'/%3E%3C/svg%3E");
   -webkit-mask-image: var(--hole-l), var(--hole-r), linear-gradient(#000, #000);
           mask-image: var(--hole-l), var(--hole-r), linear-gradient(#000, #000);
   -webkit-mask-size: var(--b) var(--hp), var(--b) var(--hp), 100% 100%;
           mask-size: var(--b) var(--hp), var(--b) var(--hp), 100% 100%;
-  -webkit-mask-position: 0 var(--pt), 100% var(--pt), 0 0;
-          mask-position: 0 var(--pt), 100% var(--pt), 0 0;
+  -webkit-mask-position: 0 0, 100% 0, 0 0;
+          mask-position: 0 0, 100% 0, 0 0;
   -webkit-mask-repeat: repeat-y, repeat-y, no-repeat;
           mask-repeat: repeat-y, repeat-y, no-repeat;
   -webkit-mask-composite: xor, xor, source-over;
           mask-composite: exclude, exclude, add;
 }
+.lb-ghost .lb-strip { visibility: hidden; filter: url(#lb-film-alpha); }   /* shown only over an overlap, see film.js */
+.lb-cell:first-child {                    /* leader before the first frame */
+  height: calc(var(--pt) + var(--pitch) + var(--ext));
+  padding-top: var(--pt);
+  -webkit-mask-position: 0 var(--pt), 100% var(--pt), 0 0;
+          mask-position: 0 var(--pt), 100% var(--pt), 0 0;
+}
+.lb-cell:last-child {                     /* tail after the last frame */
+  height: calc(var(--fh) + var(--pt));
+  margin-bottom: 0;
+}
+.lb-cell:first-child:last-child { height: calc(var(--pt) + var(--fh) + var(--pt)); }
 
 .lb-frame {
   position: relative;
   width: var(--fw);
   height: var(--fh);
-  margin-bottom: var(--g);
 }
-.lb-frame:last-child { margin-bottom: 0; }
 
 .lb-img {
   position: absolute;
@@ -102,10 +127,10 @@
 .lb-tag.r { right: calc(var(--fw) * -0.115); }
 
 /* NEGATIVE layer: inverted photos with an orange film-mask cast */
-.lb-neg .lb-img img {
+:is(.lb-neg, .lb-ghost) .lb-img img {
   filter: invert(1) contrast(.82) brightness(.82) saturate(.8);
 }
-.lb-neg .lb-img::after {
+:is(.lb-neg, .lb-ghost) .lb-img::after {
   content: "";
   position: absolute;
   inset: 0;
@@ -249,19 +274,24 @@
   text-transform: uppercase;
   color: #5f5036;
 }
+.lb-nav-bar {
+  display: flex;
+  align-items: stretch;
+  height: 40px;
+  border-bottom: 1px solid rgba(60, 45, 20, .18);
+  background: color-mix(in srgb, var(--lb-bg) 82%, transparent);
+  -webkit-backdrop-filter: blur(10px);
+          backdrop-filter: blur(10px);
+}
 .lb-nav-toggle {
   display: flex;
   align-items: center;
   gap: 10px;
   box-sizing: border-box;
-  width: 100%;
-  height: 40px;
+  flex: 1;
   padding: 0 clamp(16px, 3vw, 28px);
   border: 0;
-  border-bottom: 1px solid rgba(60, 45, 20, .18);
-  background: color-mix(in srgb, var(--lb-bg) 82%, transparent);
-  -webkit-backdrop-filter: blur(10px);
-          backdrop-filter: blur(10px);
+  background: none;
   font: inherit;
   letter-spacing: inherit;
   text-transform: inherit;
@@ -269,6 +299,22 @@
   text-align: left;
   cursor: pointer;
 }
+.lb-nav-organize {
+  align-self: center;
+  margin-right: clamp(16px, 3vw, 28px);
+  padding: 7px 14px;
+  border: 1px solid rgba(60, 45, 20, .35);
+  border-radius: 999px;
+  background: none;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition: background .15s ease, color .15s ease;
+}
+.lb-nav-organize:hover { background: #3a3024; color: var(--lb-bg); }
+.lb-nav-organize:active { transform: translateY(1px); }
 .lb-nav-toggle:hover { color: #2a2218; }
 .lb-nav-toggle svg {
   width: 10px;
@@ -279,6 +325,11 @@
   transition: transform .2s ease;
 }
 .lb-nav.is-open .lb-nav-toggle svg { transform: rotate(180deg); }
+
+/* film strips can be picked up and moved */
+.lb-root.lb-over-film { cursor: grab; }
+.lb-root.is-gripping { cursor: grabbing; user-select: none; -webkit-user-select: none; }
+.lb-root.is-gripping .lb-loupe { cursor: grabbing; }
 .lb-nav-panel {
   display: flex;
   flex-direction: column;

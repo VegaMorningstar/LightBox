@@ -1,7 +1,7 @@
 /* Sounds, synthesised with Web Audio (no sound files).
  *
- * Detent clicks for the magnification dial, and a glass-on-matte-plastic slide for dragging the
- * eyepiece across the board.
+ * Detent clicks for the magnification dial, a glass-on-matte-plastic slide for dragging the
+ * eyepiece across the board, and a crackle of film when it is slid fast enough to drag the film.
  *
  * A click is three layers, each a few milliseconds long: a burst of band-passed noise (the
  * "tick"), a short high ping (the pawl dropping into the notch) and a soft low thump (the
@@ -12,13 +12,15 @@
  * surface. The audio context is created on the first user gesture, as browsers require.
  */
 
-export function createSounds({ clickVolume = 0.6, slideVolume = 0.5 } = {}) {
+export function createSounds({ clickVolume = 0.6, slideVolume = 0.5, crackleVolume = 0.5 } = {}) {
   let ctx = null;
   let master = null;      // clicks
   let slideMaster = null;
   let noise = null;
   let vol = clickVolume;
   let slideVol = slideVolume;
+  let crackleVol = crackleVolume;
+  let crackleMaster = null;
   let slideNodes = null;
 
   const jitter = (spread) => 1 + (Math.random() * 2 - 1) * spread;
@@ -35,6 +37,9 @@ export function createSounds({ clickVolume = 0.6, slideVolume = 0.5 } = {}) {
       const limiter = ctx.createDynamicsCompressor();
       master.connect(limiter);
       slideMaster.connect(limiter);
+      crackleMaster = ctx.createGain();
+      crackleMaster.gain.value = crackleVol;
+      crackleMaster.connect(limiter);
       limiter.connect(ctx.destination);
       noise = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);   // shared by clicks and slide
       const d = noise.getChannelData(0);
@@ -78,7 +83,7 @@ export function createSounds({ clickVolume = 0.6, slideVolume = 0.5 } = {}) {
     param.exponentialRampToValueAtTime(0.0001, t + attack + decay);
   }
 
-  function noiseBurst(t, { freq, q, peak, decay }) {
+  function noiseBurst(t, { freq, q, peak, decay }, dest = master) {
     const src = ctx.createBufferSource();
     src.buffer = noise;
     const filter = ctx.createBiquadFilter();
@@ -87,7 +92,7 @@ export function createSounds({ clickVolume = 0.6, slideVolume = 0.5 } = {}) {
     filter.Q.value = q;
     const g = ctx.createGain();
     envelope(g.gain, t, peak, 0.0006, decay);
-    src.connect(filter).connect(g).connect(master);
+    src.connect(filter).connect(g).connect(dest);
     src.start(t, Math.random() * 0.02);
     src.stop(t + decay + 0.02);
   }
@@ -121,10 +126,41 @@ export function createSounds({ clickVolume = 0.6, slideVolume = 0.5 } = {}) {
       slideVol = v;
       if (slideMaster) slideMaster.gain.value = v;
     },
-    /* speed of the eyepiece in px per ms; call every frame while it moves, and with 0 when it stops */
-    slide(speed) {
+    setCrackleVolume(v) {
+      crackleVol = v;
+      if (crackleMaster) crackleMaster.gain.value = v;
+    },
+    /* Film crackle while the eyepiece is rubbing the film. `level` is 0..1 (how hard), `dtMs` the time
+       since the last call. Sparse, random, sharp little ticks; now and then a short crinkle of several
+       in a row, like acetate flexing. Silent at level 0. Needs the audio unlocked by an earlier press. */
+    crackle(level, dtMs) {
+      if (!ctx || !crackleMaster || crackleVol <= 0 || level < 0.03) return;
+      const expected = (70 * Math.pow(level, 1.2) * dtMs) / 1000;
+      const n = Math.floor(expected) + (Math.random() < expected % 1 ? 1 : 0);
+      for (let i = 0; i < n; i++) {
+        const t = ctx.currentTime + 0.002 + (Math.random() * dtMs) / 1000;
+        const loud = 0.5 + 0.5 * level;
+        if (Math.random() < 0.12) {                       // a crinkle
+          const parts = 3 + Math.floor(Math.random() * 3);
+          for (let k = 0; k < parts; k++) {
+            noiseBurst(t + k * (0.004 + Math.random() * 0.005), {
+              freq: 1800 + Math.random() * 1500, q: 1.2 + Math.random(),
+              peak: (0.12 + Math.random() * 0.3) * loud, decay: 0.004 + Math.random() * 0.006,
+            }, crackleMaster);
+          }
+        } else {                                          // a single tick
+          const r = Math.random();
+          noiseBurst(t, {
+            freq: 2800 + Math.random() * 4700, q: 1.6 + Math.random() * 1.8,
+            peak: (0.1 + 0.8 * r * r) * 0.6 * loud, decay: 0.002 + Math.random() * 0.005,
+          }, crackleMaster);
+        }
+      }
+    },
+    /* how hard the eyepiece is rubbing the film, 0..1 (film.contact); call every frame, 0 when it isn't */
+    slide(level01) {
       if (!slideNodes) return;                   // not unlocked yet
-      const level = speed > 0.01 ? Math.min(1, Math.pow(speed / 1.4, 0.6)) : 0;
+      const level = level01 > 0.02 ? Math.min(1, Math.pow(level01, 0.6)) : 0;
       const t = ctx.currentTime;
       const { band, bandGain, lowGain, wobbleGain } = slideNodes;
       bandGain.gain.setTargetAtTime(level * 0.5, t, 0.05);

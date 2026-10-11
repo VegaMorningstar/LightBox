@@ -1,7 +1,7 @@
 /* LightBox — contact-sheet-on-a-light-box effect.
  *
  *   import { mountLightBox } from "./lightbox/lightbox.js";
- *   mountLightBox(document.querySelector("#sheet"), { photos: ["a.jpg", "b.jpg"], zoom: 1.2, shadow: 1.8, shadowFade: 0.85, clickVolume: 0.6, slideVolume: 0 });
+ *   mountLightBox(document.querySelector("#sheet"), { photos: ["a.jpg", "b.jpg"], zoom: 1.2, shadow: 1.8, shadowFade: 0.85, clickVolume: 0.6, slideVolume: 0.03, crackleVolume: 1, filmDrag: 1, filmFlutter: 1 });
  *
  * The sheet shows inverted "negatives". A draggable eyepiece sits on top of it: liquid glass
  * around a black bezel (turn it to zoom), and a clear inner lens that shows the area underneath
@@ -11,7 +11,8 @@
 import { createSounds } from "./sounds.js";
 import { buildDial, buildTrim, DEG_PER_ZOOM, DETENTS, GLASS_RATIO, ZOOM_MAX, ZOOM_MIN } from "./dial.js";
 import { createGlass, createLens } from "./glass.js";
-import { createLensView, rasterizeNegative, readScene } from "./raster.js";
+import { createFilm } from "./film.js";
+import { buildFilmFilter, createLensView, createNegView, readScene, warmNegatives } from "./raster.js";
 
 const STRIP_DY = [0, 0.34, 0.12, 0.5, 0.05, 0.27];   // per-strip stagger, in frame widths
 const STRIP_ROT = [-0.3, 0.25, -0.15, 0.35, -0.25, 0.15]; // per-strip tilt, degrees
@@ -22,7 +23,7 @@ function buildSheet(photos, cols, fw, className) {
   const sheet = document.createElement("div");
   sheet.className = `lb-sheet ${className}`;
   sheet.style.setProperty("--fw", `${fw}px`);
-  sheet.setAttribute("aria-hidden", className === "lb-pos" ? "true" : "false");
+  sheet.setAttribute("aria-hidden", className === "lb-neg" ? "false" : "true");
 
   const perStrip = Math.ceil(photos.length / cols);
   for (let s = 0; s < cols; s++) {
@@ -42,7 +43,7 @@ function buildSheet(photos, cols, fw, className) {
       const box = document.createElement("div");
       box.className = "lb-img";
       const img = new Image();
-      img.alt = className === "lb-pos" ? "" : `Photo ${n}`;
+      img.alt = className === "lb-neg" ? `Photo ${n}` : "";
       img.decoding = "async";
       img.onload = () => img.classList.add("is-loaded");
       img.src = src;
@@ -56,7 +57,10 @@ function buildSheet(photos, cols, fw, className) {
       r.textContent = `▸${String(n).padStart(2, "0")}A`;
 
       frame.append(box, l, r);
-      strip.append(frame);
+      const cell = document.createElement("div");
+      cell.className = "lb-cell";
+      cell.append(frame);
+      strip.append(cell);
     });
     sheet.append(strip);
   }
@@ -87,7 +91,7 @@ function buildEyepiece() {
 }
 
 /* A slim "Sliders" nav bar along the top; the sliders drop down from it, closed by default. */
-function buildControls(rows) {
+function buildControls(rows, { onOrganize } = {}) {
   const nav = document.createElement("nav");
   nav.className = "lb-nav";
   nav.setAttribute("aria-label", "Sliders");
@@ -97,6 +101,15 @@ function buildControls(rows) {
   toggle.className = "lb-nav-toggle";
   toggle.setAttribute("aria-expanded", "false");
   toggle.innerHTML = '<span>Sliders</span><svg viewBox="0 0 10 6" aria-hidden="true"><path d="M1 1l4 4 4-4"/></svg>';
+
+  const bar = div("lb-nav-bar");
+  const organize = document.createElement("button");
+  organize.type = "button";
+  organize.className = "lb-nav-organize";
+  organize.textContent = "Organize";
+  organize.title = "Put the film back where it started";
+  organize.addEventListener("click", () => onOrganize?.());
+  bar.append(toggle, organize);
 
   const panel = div("lb-nav-panel");
   panel.id = `lb-sliders-${Math.random().toString(36).slice(2, 7)}`;
@@ -124,14 +137,15 @@ function buildControls(rows) {
     label.append(text, input, out);
     panel.append(label);
   }
-  nav.append(toggle, panel);
+  nav.append(bar, panel);
   return { wrap: nav, setters };
 }
 
-export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFade = 0.85, clickVolume = 0.6, slideVolume = 0, size, controls = true } = {}) {
+export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFade = 0.85, clickVolume = 0.6, slideVolume = 0.03, crackleVolume = 1, filmDrag = 1, filmFlutter = 1, size, controls = true } = {}) {
   root.classList.add("lb-root");
   const stage = div("lb-stage");
   root.replaceChildren(stage);
+  root.append(buildFilmFilter("lb-film-alpha"));
 
   const loupe = buildEyepiece();
   const glass = createGlass(loupe.refract);
@@ -148,6 +162,12 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
   let raf = 0;
   let layoutId = 0;
   let view = null;     // magnified window onto the lit sheet, drawn for the lens
+  let negView = null;  // window onto the negative sheet, drawn for the outer glass
+  let negSide = 0;
+  let film = null;     // friction between eyepiece, film and board
+  let gripping = false;                // a film strip is being held
+  const filmCfg = { push: filmDrag, flutter: filmFlutter };
+  const eyeV = { x: 0, y: 0 };         // eyepiece velocity in px per ms, smoothed
   let fade = shadowFade;
   let lensPad = 0;
 
@@ -167,7 +187,10 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
       // keep the point under the eyepiece centred in the glass, scaled up
       loupe.mag.style.transform = `translate(${G / 2 - zoom * cur.x}px, ${G / 2 - zoom * cur.y}px) scale(${zoom})`;
     }
-    glass?.draw(cur.x, cur.y, D / 2);
+    if (glass && negView) {
+      negView.render(cur.x, cur.y, 1);
+      glass.draw(negView.canvas, negSide, D / 2);
+    }
   };
 
   // Sliding on a board: remember how fast the eyepiece was moving when let go, then glide and
@@ -198,9 +221,17 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     const px = cur.x, py = cur.y;
     cur.x += (goal.x - cur.x) * 0.35;
     cur.y += (goal.y - cur.y) * 0.35;
-    sounds.slide(Math.hypot(cur.x - px, cur.y - py) / dt);
-    const done = !coasting && Math.abs(goal.x - cur.x) < 0.2 && Math.abs(goal.y - cur.y) < 0.2;
-    if (done) { cur.x = goal.x; cur.y = goal.y; sounds.slide(0); }
+    eyeV.x += ((cur.x - px) / dt - eyeV.x) * 0.5;
+    eyeV.y += ((cur.y - py) / dt - eyeV.y) * 0.5;
+    // fast slides drag the film a little; slow movement leaves it alone
+    const filmMoving = film ? film.step(dt, { x: cur.x, y: cur.y, vx: eyeV.x, vy: eyeV.y, radius: Do / 2 }) : false;
+    // The slide sounds while the eyepiece rubs the film (a fast slide, not ordinary dragging) or a film
+    // strip is moving on the board. The crackle sounds while the eyepiece rubs the film, or a moving
+    // strip is riding over another one.
+    sounds.slide(film ? Math.max(film.contact, film.moveSlide) : 0);
+    sounds.crackle(film ? Math.max(film.contact, film.moveRub) : 0, dt);
+    const done = !coasting && !filmMoving && Math.abs(goal.x - cur.x) < 0.2 && Math.abs(goal.y - cur.y) < 0.2;
+    if (done) { cur.x = goal.x; cur.y = goal.y; eyeV.x = eyeV.y = 0; sounds.slide(0); }
     render();
     if (done) { raf = 0; lastT = 0; } else raf = requestAnimationFrame(tick);
   };
@@ -232,7 +263,11 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
       loupe.mag.replaceChildren(buildSheet(photos, cols, fw, "lb-pos"));
       loupe.mag.style.width = `${stage.clientWidth}px`;
     }
-    stage.replaceChildren(buildSheet(photos, cols, fw, "lb-neg"), loupe.el);
+    stage.replaceChildren(
+      buildSheet(photos, cols, fw, "lb-neg"),
+      ...(glass && lens ? [buildSheet(photos, cols, fw, "lb-ghost")] : []),   // shows a lower strip through an upper one
+      loupe.el,
+    );
 
     if (!placed) {   // rest on the sheet, inside the first screenful
       goal.x = stage.clientWidth * 0.42;
@@ -243,16 +278,21 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     cur.x = goal.x; cur.y = goal.y;
     render();
 
-    // read the laid-out sheet once; both glasses draw from it
+    // read the laid-out sheet once; the film physics and both glasses all draw from it
+    view = null; negView = null; film = null;
+    gripping = false; root.classList.remove("is-gripping", "lb-over-film");
     if (glass && lens) {
       const id = ++layoutId;
       readScene(stage, root)
         .then((scene) => {
           if (id !== layoutId) return;
-          const neg = rasterizeNegative(scene);
-          glass.setSource(neg.canvas, neg.width, neg.height);
+          warmNegatives(scene, Math.min(2, window.devicePixelRatio || 1));
+          negSide = Do + Math.round(Do * 0.28);     // room for the rim to bend outward
+          negView = createNegView(scene, glass.dpr);
+          negView.resize(negSide);
           view = createLensView(scene, lens.dpr);
           view.resize(G + lensPad * 2);
+          film = createFilm(scene, filmCfg);
           loupe.el.classList.add("has-gl");
           render();
         })
@@ -269,7 +309,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
 
   let setters = {};
   // detent clicks: one per 0.05x tick the dial passes, a thud at each end stop
-  const sounds = createSounds({ clickVolume, slideVolume });
+  const sounds = createSounds({ clickVolume, slideVolume, crackleVolume });
   const detentOf = (z) => Math.floor((z - ZOOM_MIN) / 0.05 + 1e-6);
   let atStop = false;
 
@@ -294,9 +334,12 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
       { key: "zoom", name: "Magnification", min: ZOOM_MIN, max: ZOOM_MAX, step: 0.05, value: zoom, onInput: setZoom },
       { key: "shadow", name: "Shadow strength", min: 0, max: 6, step: 0.05, value: shadow, onInput: setShadow },
       { key: "fade", name: "Shadow fade", min: 0.1, max: 3, step: 0.05, value: shadowFade, onInput: setFade },
+      { key: "filmDrag", name: "Film drag", min: 0, max: 2, step: 0.05, value: filmDrag, onInput: (v) => { filmCfg.push = v; } },
+      { key: "filmFlutter", name: "Film flutter", min: 0, max: 2, step: 0.05, value: filmFlutter, onInput: (v) => { filmCfg.flutter = v; } },
       { key: "volume", name: "Click volume", min: 0, max: 1, step: 0.05, value: clickVolume, onInput: (v) => sounds.setClickVolume(v) },
+      { key: "crackle", name: "Film crackle volume", min: 0, max: 1, step: 0.05, value: crackleVolume, onInput: (v) => sounds.setCrackleVolume(v) },
       { key: "slide", name: "Slide volume", min: 0, max: 1, step: 0.05, value: slideVolume, onInput: (v) => sounds.setSlideVolume(v) },
-    ]);
+    ], { onOrganize: () => { film?.reset(); kick(); } });
     setters = c.setters;
     root.classList.add("lb-has-nav");
     root.append(c.wrap);
@@ -437,6 +480,51 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     };
     snapRaf = requestAnimationFrame(step);
   }
+
+  // Grab a film strip: press it anywhere and it follows the pointer like a strip lying on the board.
+  // Hold the top and the top swings while the bottom barely moves; the middle slides the whole strip.
+  const stagePoint = (e) => {
+    const b = stage.getBoundingClientRect();
+    return { x: e.clientX - b.left, y: e.clientY - b.top };
+  };
+  const onBoard = (e) => !e.target.closest(".lb-loupe, .lb-nav");
+  function letGo() {
+    if (!gripping) return;
+    gripping = false;
+    root.classList.remove("is-gripping");
+    film?.release();
+    kick();
+  }
+  root.addEventListener("pointerdown", (e) => {
+    if (!film || e.button !== 0 || !onBoard(e)) return;
+    const p = stagePoint(e);
+    const hit = film.hit(p.x, p.y);
+    if (!hit) return;
+    e.preventDefault();
+    root.setPointerCapture(e.pointerId);
+    sounds.unlock();                                     // browsers only start audio from a gesture
+    film.grab(hit);
+    gripping = true;
+    root.classList.add("is-gripping");
+    kick();
+  });
+  root.addEventListener("pointermove", (e) => {
+    if (gripping) {
+      if (buttonUp(e)) { letGo(); return; }              // the release was lost outside the window
+      film.dragTo(stagePoint(e));
+      kick();
+      return;
+    }
+    if (film && onBoard(e)) {
+      const p = stagePoint(e);
+      root.classList.toggle("lb-over-film", !!film.hit(p.x, p.y));
+    }
+  });
+  root.addEventListener("pointerleave", () => root.classList.remove("lb-over-film"));
+  root.addEventListener("pointerup", letGo);
+  root.addEventListener("pointercancel", letGo);
+  root.addEventListener("lostpointercapture", letGo);
+  addEventListener("blur", letGo);
 
   // turn the bezel: clockwise raises magnification, anticlockwise lowers it
   let turning = false;

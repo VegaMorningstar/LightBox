@@ -13,11 +13,10 @@ void main() { gl_Position = vec4(a, 0.0, 1.0); }`;
 
 const FRAG = `#version 300 es
 precision highp float;
-uniform sampler2D uTex;
+uniform sampler2D uTex;   // the negative sheet around the eyepiece, centred on it
 uniform vec2  uRes;       // canvas size, device px
 uniform float uDpr;
-uniform vec2  uCenter;    // glass centre, in source css px
-uniform vec2  uSrc;       // source size, css px
+uniform float uSide;      // width of that window, css px
 uniform float uDo;        // outer glass diameter, css px
 uniform float uRi;        // radius of the eyepiece ring the glass sits around
 uniform float uStrength;  // refraction at the rim, css px
@@ -26,9 +25,10 @@ uniform float uBlur;      // frost, in mip levels at the rim
 out vec4 outColor;
 
 vec3 refracted(vec2 base, vec2 dir, float disp, float ca, float lod) {
-  float r = textureLod(uTex, (base + dir * (disp + ca)) / uSrc, lod).r;
-  float g = textureLod(uTex, (base + dir * disp) / uSrc, lod).g;
-  float b = textureLod(uTex, (base + dir * (disp - ca)) / uSrc, lod).b;
+  vec2 h = vec2(uSide * 0.5);
+  float r = textureLod(uTex, (base + dir * (disp + ca) + h) / uSide, lod).r;
+  float g = textureLod(uTex, (base + dir * disp + h) / uSide, lod).g;
+  float b = textureLod(uTex, (base + dir * (disp - ca) + h) / uSide, lod).b;
   return vec3(r, g, b);
 }
 
@@ -44,7 +44,7 @@ void main() {
   vec2 dir = p / max(r, 1e-3);
   float prof = pow(t, 2.2);                           // flat inside, steep at the rim
 
-  vec3 col = refracted(uCenter + p, dir, uStrength * prof, uChroma * prof, uBlur * t);
+  vec3 col = refracted(p, dir, uStrength * prof, uChroma * prof, uBlur * t);
 
   // light from the upper left: bright rim facing it, slight shade opposite
   vec2 L = normalize(vec2(-0.55, -0.8));
@@ -162,27 +162,19 @@ function makePass(canvas, fragSrc, names) {
 
 /* PA: the outer glass ring, refracting the negative sheet beneath it. null without WebGL2. */
 export function createGlass(canvas) {
-  const pass = makePass(canvas, FRAG, ["uTex", "uRes", "uDpr", "uCenter", "uSrc", "uDo", "uRi", "uStrength", "uChroma", "uBlur"]);
+  const pass = makePass(canvas, FRAG, ["uTex", "uRes", "uDpr", "uSide", "uDo", "uRi", "uStrength", "uChroma", "uBlur"]);
   if (!pass) return null;
-  let ready = false;
   let size = 1;
-  let src = { w: 1, h: 1 };
   return {
+    get dpr() { return pass.dpr; },
     resize(cssSize) { size = cssSize; pass.resize(cssSize); },
-    /* the baked negative sheet; cssW/cssH is the area it covers */
-    setSource(source, cssW, cssH) {
-      pass.upload(source, true);
-      src = { w: cssW, h: cssH };
-      ready = true;
-    },
-    get ready() { return ready; },
-    /* cx, cy: glass centre in source css px; ringRadius: the eyepiece ring's outer radius */
-    draw(cx, cy, ringRadius) {
-      if (!ready) return;
+    /* view: the window canvas from raster.js, `side` css px across and centred on the glass;
+       ringRadius: the eyepiece ring's outer radius */
+    draw(view, side, ringRadius) {
       const rimWidth = size / 2 - ringRadius;
+      pass.upload(view, true);
       pass.draw((gl, U) => {
-        gl.uniform2f(U.uCenter, cx, cy);
-        gl.uniform2f(U.uSrc, src.w, src.h);
+        gl.uniform1f(U.uSide, side);
         gl.uniform1f(U.uDo, size);
         gl.uniform1f(U.uRi, ringRadius);
         gl.uniform1f(U.uStrength, rimWidth * 0.62);
