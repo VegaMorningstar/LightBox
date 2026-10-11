@@ -191,6 +191,14 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
   let G = 180;     // inner glass diameter
   let placed = false;
   let dragging = false;
+  // Double-pressing the glass and holding lifts the eyepiece off the film and the board; letting go sets it back down. `lift` eases
+  // between 0 (resting) and 1 (held up) and drives how much the glass sees and its shadow. While it is up it has no
+  // effect on the film and makes no sliding or crackling sounds.
+  let lift = 0, liftGoal = 0;
+  let glassTap = null, glassPress = null;   // taps on the glass, to tell a double press from a single one
+  const LIFT_AREA = 0.4;               // extra area the lens takes in at full lift
+  const LIFT_SCALE = 0.045;            // and how much closer (bigger) the eyepiece looks
+  const smooth = (x) => x * x * (3 - 2 * x);
   let raf = 0;
   let layoutId = 0;
   let view = null;     // magnified window onto the lit sheet, drawn for the lens
@@ -210,9 +218,11 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
   };
 
   const render = () => {
-    loupe.el.style.transform = `translate(${cur.x - Do / 2}px, ${cur.y - Do / 2}px)`;
+    const L = smooth(lift);
+    loupe.el.style.transform = `translate(${cur.x - Do / 2}px, ${cur.y - Do / 2}px) scale(${(1 + LIFT_SCALE * L).toFixed(4)})`;
+    loupe.el.style.setProperty("--lift", L.toFixed(3));
     if (lens && view) {
-      view.render(cur.x, cur.y, zoom);
+      view.render(cur.x, cur.y, zoom / (1 + LIFT_AREA * L));     // lifted, the lens shows more of the sheet
       // the aberration zone is the strip the ring's shadow covers, so it follows the Fade slider
       const edge = Math.max(6, Math.min(G * 0.45, D * 0.082 * fade));
       lens.draw(view.canvas, lensPad, edge, bleed);
@@ -222,7 +232,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     }
     if (glass && negView) {
       negView.render(cur.x, cur.y, 1);
-      glass.draw(negView.canvas, negSide, D / 2);
+      glass.draw(negView.canvas, negSide, D / 2, L);
     }
   };
 
@@ -251,19 +261,27 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     const dt = Math.min(34, lastT ? t - lastT : 16);
     lastT = t;
     if (coasting) coast(dt);
+    // up fast and easing out, down a touch quicker; the sound of it touching down plays as it lands
+    const wasUp = lift > 0;
+    if (lift < liftGoal) lift = Math.min(liftGoal, lift + (1 - lift) * (1 - Math.exp(-dt / 55)) + dt / 900);
+    else if (lift > liftGoal) lift = Math.max(liftGoal, lift - dt / 170);
+    if (wasUp && lift === 0) sounds.place();
     const px = cur.x, py = cur.y;
     cur.x += (goal.x - cur.x) * 0.35;
     cur.y += (goal.y - cur.y) * 0.35;
     eyeV.x += ((cur.x - px) / dt - eyeV.x) * 0.5;
     eyeV.y += ((cur.y - py) / dt - eyeV.y) * 0.5;
     // fast slides drag the film a little; slow movement leaves it alone
-    const filmMoving = film ? film.step(dt, { x: cur.x, y: cur.y, vx: eyeV.x, vy: eyeV.y, radius: Do / 2 }) : false;
+    // A lifted eyepiece is off the film: it cannot push or bend it, and it makes no sliding or crackling. All of
+    // that fades back in as it touches down, so a throw that lands still rubs the film as it glides.
+    const touch = 1 - smooth(lift);
+    const filmMoving = film ? film.step(dt, { x: cur.x, y: cur.y, vx: eyeV.x * touch, vy: eyeV.y * touch, radius: Do / 2 }) : false;
     // The slide sounds while the eyepiece rubs the film (a fast slide, not ordinary dragging) or a film
     // strip is moving on the board. The crackle sounds while the eyepiece rubs the film, or a moving
     // strip is riding over another one.
     sounds.slide(film ? Math.max(film.contact, film.moveSlide) : 0);
     sounds.crackle(film ? Math.max(film.contact, film.moveRub) : 0, dt);
-    const done = !coasting && !filmMoving && Math.abs(goal.x - cur.x) < 0.2 && Math.abs(goal.y - cur.y) < 0.2;
+    const done = !coasting && !filmMoving && lift === liftGoal && Math.abs(goal.x - cur.x) < 0.2 && Math.abs(goal.y - cur.y) < 0.2;
     if (done) { cur.x = goal.x; cur.y = goal.y; eyeV.x = eyeV.y = 0; sounds.slide(0); }
     render();
     if (done) { raf = 0; lastT = 0; } else raf = requestAnimationFrame(tick);
@@ -344,7 +362,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
         .then((scene) => {
           if (id !== layoutId) return;
           warmNegatives(scene, Math.min(2, window.devicePixelRatio || 1));
-          negSide = Do + Math.round(Do * 0.28);     // room for the rim to bend outward
+          negSide = Math.round(Do * 1.5);               // room for the rim to bend outward, even when the eyepiece is lifted
           negView = createNegView(scene, glass.dpr);
           negView.resize(negSide);
           view = createLensView(scene, lens.dpr);
@@ -456,6 +474,15 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     samples.length = 0;
     dragging = true;
     loupe.el.classList.add("is-drag");
+    // A single press and hold just moves the eyepiece along the board. A quick tap followed straight away by a
+    // second press and hold on the glass (PA or PC) picks it up off the board; the bezel (PB) keeps its own
+    // meaning: a single press moves, a double press turns it.
+    const now = performance.now();
+    const onBezel = !!e.target.closest(".lb-ring");
+    const isDouble = !onBezel && glassTap && now - glassTap.t < 350 && Math.hypot(e.clientX - glassTap.x, e.clientY - glassTap.y) < 28;
+    glassPress = onBezel ? null : { t: now, x: e.clientX, y: e.clientY };
+    if (isDouble) { glassTap = null; glassPress = null; liftGoal = 1; sounds.lift(); }   // pick it up
+    kick();
   });
   loupe.el.addEventListener("pointermove", (e) => {
     if (!dragging) return;
@@ -467,12 +494,21 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     if (!dragging) return;
     dragging = false;
     loupe.el.classList.remove("is-drag");
+    liftGoal = 0;                              // set it back down
+    kick();
     if (release === true && !reduceMotion.matches) {   // let go while moving: keep sliding
       const v = throwVelocity();
       if (Math.hypot(v.x, v.y) > 0.05) { vel.x = v.x; vel.y = v.y; coasting = true; kick(); }
     }
   }
-  loupe.el.addEventListener("pointerup", () => drop(true));
+  loupe.el.addEventListener("pointerup", (e) => {
+    const now = performance.now();
+    if (glassPress && now - glassPress.t < 260 && Math.hypot(e.clientX - glassPress.x, e.clientY - glassPress.y) < 8) {
+      glassTap = { t: now, x: e.clientX, y: e.clientY };       // a tap: the first half of a double press
+    }
+    glassPress = null;
+    drop(true);
+  });
   loupe.el.addEventListener("pointercancel", drop);
   loupe.el.addEventListener("lostpointercapture", () => { drop(); stopTurn(); });
   // scrolling while holding keeps the eyepiece under the pointer

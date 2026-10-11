@@ -12,6 +12,9 @@
  * surface. The audio context is created on the first user gesture, as browsers require.
  */
 
+/* how loud the ordinary dial ticks are, against the notch and lock sounds (1 = as loud as the notch's click) */
+const SUBCLICK = 0.34;
+
 export function createSounds({ clickVolume = 0.6, slideVolume = 0.5, crackleVolume = 0.5 } = {}) {
   let ctx = null;
   let master = null;      // clicks
@@ -77,21 +80,34 @@ export function createSounds({ clickVolume = 0.6, slideVolume = 0.5, crackleVolu
     slideNodes = { band, bandGain, lowGain, wobbleGain };
   }
 
+  /* a gentle low-pass so the touch sounds never get bright or harsh; one bus is shared by lift and place */
+  let soft = null;
+  function softBus() {
+    if (!soft) {
+      soft = ctx.createBiquadFilter();
+      soft.type = "lowpass";
+      soft.frequency.value = 4200;
+      soft.Q.value = 0.4;
+      soft.connect(master);
+    }
+    return soft;
+  }
+
   function envelope(param, t, peak, attack, decay) {
     param.setValueAtTime(0.0001, t);
     param.exponentialRampToValueAtTime(peak, t + attack);
     param.exponentialRampToValueAtTime(0.0001, t + attack + decay);
   }
 
-  function noiseBurst(t, { freq, q, peak, decay }, dest = master) {
+  function noiseBurst(t, { freq, q, peak, decay, type = "bandpass", attack = 0.0006 }, dest = master) {
     const src = ctx.createBufferSource();
     src.buffer = noise;
     const filter = ctx.createBiquadFilter();
-    filter.type = "bandpass";
+    filter.type = type;
     filter.frequency.value = freq;
     filter.Q.value = q;
     const g = ctx.createGain();
-    envelope(g.gain, t, peak, 0.0006, decay);
+    envelope(g.gain, t, peak, attack, decay);
     src.connect(filter).connect(g).connect(dest);
     src.start(t, Math.random() * 0.02);
     src.stop(t + decay + 0.02);
@@ -173,16 +189,17 @@ export function createSounds({ clickVolume = 0.6, slideVolume = 0.5, crackleVolu
       if (vol <= 0 || !ensure()) return;
       const count = Math.min(n, 4);
       const t0 = ctx.currentTime + 0.002;
-      for (let i = 0; i < count; i++) clickAt(t0 + i * 0.008, (0.8 + Math.random() * 0.3) * (i ? 0.8 : 1));
+      // the ordinary ticks are kept light, so the notch at a numbered point clearly stands out from them
+      for (let i = 0; i < count; i++) clickAt(t0 + i * 0.008, SUBCLICK * (0.8 + Math.random() * 0.3) * (i ? 0.8 : 1));
     },
     /* the ring dropping into a numbered notch: a crisp, slightly higher "tock" than the ordinary
        detents, so catching a number is felt as well as seen */
     notch() {
       if (vol <= 0 || !ensure()) return;
       const t = ctx.currentTime + 0.002;
-      noiseBurst(t, { freq: 3400 * jitter(0.06), q: 1.1, peak: 1, decay: 0.012 });
-      tone(t, { type: "triangle", from: 3000 * jitter(0.04), to: 2100, peak: 0.28, decay: 0.01, sweep: 0.008 });
-      tone(t, { type: "sine", from: 300 * jitter(0.05), to: 130, peak: 0.7, decay: 0.045, sweep: 0.025 });
+      noiseBurst(t, { freq: 3400 * jitter(0.06), q: 1.1, peak: 1.25, decay: 0.014 });
+      tone(t, { type: "triangle", from: 3000 * jitter(0.04), to: 2100, peak: 0.34, decay: 0.012, sweep: 0.008 });
+      tone(t, { type: "sine", from: 300 * jitter(0.05), to: 130, peak: 0.9, decay: 0.05, sweep: 0.025 });
     },
     /* the ring settling into a numbered point: a firmer click than the ordinary detents */
     lock() {
@@ -190,6 +207,48 @@ export function createSounds({ clickVolume = 0.6, slideVolume = 0.5, crackleVolu
       const t = ctx.currentTime + 0.002;
       clickAt(t, 1.25);
       tone(t + 0.004, { type: "sine", from: 150, to: 70, peak: 0.55, decay: 0.05, sweep: 0.04 });
+    },
+    /* The glass being pulled up off the matte board: a very quiet, soft unsticking. A faint low "tk" as the
+       contact lets go, then a gentle rub of air and surface that fades away. Nothing pitched and nothing bright. */
+    lift() {
+      if (vol <= 0 || !ensure()) return;
+      const t = ctx.currentTime + 0.002;
+      const soft = softBus();
+      noiseBurst(t, { type: "lowpass", freq: 900 * jitter(0.08), q: 0.5, peak: 0.16, decay: 0.014, attack: 0.002 }, soft);
+      const src = ctx.createBufferSource();
+      src.buffer = noise;
+      const f = ctx.createBiquadFilter();
+      f.type = "bandpass"; f.Q.value = 0.6;
+      f.frequency.setValueAtTime(520, t);
+      f.frequency.exponentialRampToValueAtTime(1500, t + 0.12);
+      const g = ctx.createGain();
+      envelope(g.gain, t + 0.006, 0.11, 0.045, 0.1);
+      src.connect(f).connect(g).connect(soft);
+      src.start(t, Math.random() * 0.5);
+      src.stop(t + 0.19);
+    },
+    /* The glass coming to rest on the board: a dull, damped touch, not a ring. A short soft thump, a brush of
+       the matte surface, and only the faintest glassy colour, which dies almost at once; then a smaller second
+       touch as it settles. */
+    place() {
+      if (vol <= 0 || !ensure()) return;
+      const t = ctx.currentTime + 0.002;
+      const soft = softBus();
+      const touch = (at, k) => {
+        noiseBurst(at, { type: "lowpass", freq: 1500 * jitter(0.08), q: 0.6, peak: 0.34 * k, decay: 0.03, attack: 0.001 }, soft);   // the thump
+        noiseBurst(at, { freq: 1100 * jitter(0.1), q: 0.55, peak: 0.12 * k, decay: 0.055 }, soft);                                  // the matte brush
+        for (const [hz, amp, dec] of [[1180, 0.07, 0.026], [2260, 0.035, 0.016], [3540, 0.014, 0.01]]) {                           // faint glass body
+          const o = ctx.createOscillator();
+          o.type = "sine";
+          o.frequency.value = hz * jitter(0.03);
+          const g = ctx.createGain();
+          envelope(g.gain, at, amp * k, 0.0008, dec);
+          o.connect(g).connect(soft);
+          o.start(at); o.stop(at + dec + 0.02);
+        }
+      };
+      touch(t, 1);
+      touch(t + 0.058, 0.3);
     },
     /* the dull stop at either end of the dial */
     thud() {
