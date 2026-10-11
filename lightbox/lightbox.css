@@ -32,7 +32,8 @@
   display: flex;
   justify-content: center;
   align-items: flex-start;
-  gap: calc(var(--fw) * 0.16);
+  flex-wrap: wrap;                      /* more strips than fit across wrap onto another row */
+  gap: calc(var(--fw) * 0.3) calc(var(--fw) * 0.16);
   padding: var(--pad) var(--pad) calc(var(--pad) + var(--fw) * 0.5);
   pointer-events: none;
 }

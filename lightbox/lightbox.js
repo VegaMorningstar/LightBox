@@ -20,31 +20,45 @@ const STRIP_ROT = [-0.3, 0.25, -0.15, 0.35, -0.25, 0.15]; // per-strip tilt, deg
 
 const columnsFor = (w) => (w >= 1100 ? 6 : w >= 800 ? 4 : w >= 520 ? 3 : 2);
 
-/* How many photos each strip gets. Strips are different lengths, like real rolls cut apart, but always the same
-   split for a given photo count, so every copy of the sheet (page, ghost, multiply) agrees. */
-const STRIP_WEIGHT = [1, 0.62, 0.86, 0.5, 1.12, 0.74];
-function stripSizes(total, cols) {
-  const w = Array.from({ length: cols }, (_, i) => STRIP_WEIGHT[i % STRIP_WEIGHT.length]);
-  const sum = w.reduce((a, b) => a + b, 0);
-  const min = total >= cols * 2 ? 2 : total >= cols ? 1 : 0;
-  const sizes = w.map((x) => Math.max(min, Math.floor((x / sum) * total)));
-  let left = total - sizes.reduce((a, b) => a + b, 0);
-  // hand out what is left (or take back any excess), largest remainder first
-  const order = w.map((x, i) => [(x / sum) * total - Math.floor((x / sum) * total), i]).sort((a, b) => b[0] - a[0]).map((e) => e[1]);
-  for (let k = 0; left > 0; k++, left--) sizes[order[k % cols]]++;
-  for (let k = 0; left < 0; k++) { const i = order[order.length - 1 - (k % cols)]; if (sizes[i] > min) { sizes[i]--; left++; } }
+/* How many photos each strip gets. Real film comes in strips of five or six frames, cut from a roll, and the
+ * tail of a roll is whatever is left over. So strips are cut at five or six frames, in a fixed uneven mix. What
+ * remains at the end is its own, shorter strip if it is three frames or more. A remainder of one or two would
+ * look like a random scrap, so those frames are added to other strips instead, one each, starting with the
+ * shortest. The split depends only on the photo count, so every copy of the sheet (page, ghost, multiply)
+ * agrees. */
+const CUTS = [6, 5, 6, 5, 5, 6, 6, 5];
+function stripSizes(total) {
+  const sizes = [];
+  let left = total, i = 0;
+  while (left >= 3) {
+    const cut = CUTS[i++ % CUTS.length];
+    const take = left <= 6 ? left : cut;           // a last strip of up to six takes everything that is left
+    sizes.push(take);
+    left -= take;
+  }
+  if (left > 0) {                                  // one or two stray frames
+    if (sizes.length >= 2) {
+      const order = sizes.map((n, k) => [n, k]).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+      for (let k = 0; k < left; k++) sizes[order[k][1]]++;
+    } else if (sizes.length === 1) {
+      const all = sizes[0] + left;                 // only one strip so far: a little longer, or two even halves if too long
+      if (all > 7) { sizes[0] = Math.ceil(all / 2); sizes.push(Math.floor(all / 2)); } else sizes[0] = all;
+    } else {
+      sizes.push(left);
+    }
+  }
   return sizes;
 }
 
-function buildSheet(photos, cols, fw, className) {
+function buildSheet(photos, fw, className) {
   const sheet = document.createElement("div");
   sheet.className = `lb-sheet ${className}`;
   sheet.style.setProperty("--fw", `${fw}px`);
   sheet.setAttribute("aria-hidden", className === "lb-neg" ? "false" : "true");
 
-  const sizes = stripSizes(photos.length, cols);
+  const sizes = stripSizes(photos.length);
   let first = 0;
-  for (let s = 0; s < cols; s++) {
+  for (let s = 0; s < sizes.length; s++) {
     const slice = photos.slice(first, first + sizes[s]);
     const start = first;
     first += sizes[s];
@@ -312,7 +326,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     lastWidth = root.clientWidth;
     const cols = columnsFor(inner);
     // strip = 1.42 fw wide, gaps = 0.16 fw
-    const fw = Math.min(260, inner / (cols * 1.42 + (cols - 1) * 0.16));
+    const fw = Math.min(260, (inner * 0.995) / (cols * 1.42 + (cols - 1) * 0.16));      // strips per row; more strips wrap onto further rows
 
     D = size ?? Math.round(Math.max(230, Math.min(330, Math.min(innerWidth, innerHeight) * 0.38)));
     Do = Math.round(D * GLASS_RATIO);               // glass sits concentrically around the ring
@@ -327,15 +341,15 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     view = null;
 
     if (!lens) {
-      loupe.mag.replaceChildren(buildSheet(photos, cols, fw, "lb-pos"));
+      loupe.mag.replaceChildren(buildSheet(photos, fw, "lb-pos"));
       loupe.mag.style.width = `${stage.clientWidth}px`;
     }
     // the film layer: the sheet, plus twins of each strip for where film lies over film (one blends by
     // transparency, one multiplies). They are kept in their own isolated group so the eyepiece stays on top.
     const filmLayer = div("lb-film");
     filmLayer.append(
-      buildSheet(photos, cols, fw, "lb-neg"),
-      ...(glass && lens ? [buildSheet(photos, cols, fw, "lb-ghost"), buildSheet(photos, cols, fw, "lb-mult")] : []),
+      buildSheet(photos, fw, "lb-neg"),
+      ...(glass && lens ? [buildSheet(photos, fw, "lb-ghost"), buildSheet(photos, fw, "lb-mult")] : []),
     );
     stage.replaceChildren(filmLayer, specksEl, panel, glowEl, grainEl, loupe.el);
     specks = createSpecks(stage.clientWidth, stage.offsetHeight);

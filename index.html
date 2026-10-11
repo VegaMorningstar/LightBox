@@ -16,6 +16,8 @@
       letter-spacing: .22em; text-transform: uppercase;
       color: #7a6a4c; pointer-events: none; z-index: 2;
     }
+    /* on a phone the hint would wrap over the film */
+    @media (max-width: 640px) { .hint { display: none; } }
   </style>
 </head>
 <body>
