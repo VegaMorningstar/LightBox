@@ -85,17 +85,44 @@ function paintLayers(ctx, W, H, layers, inkOf, k) {
   }
 }
 
-function paintPanel(ctx, W, H, fall, glow) {
-  if (fall > 0) {
+/* The falloff and the glow only change when a slider moves or the sheet is resized, never while things slide
+ * over them. So each is baked once into a cached layer (half resolution: they are smooth gradients) and every
+ * frame only draws the part of it that is in view. Painting the gradients afresh each frame cost more than
+ * everything else in the frame put together. */
+const PANEL_SCALE = 0.5;
+const panelCache = new WeakMap();
+
+function bakeLayer(W, H, layers, inkOf, k) {
+  const c = document.createElement("canvas");
+  c.width = Math.max(1, Math.round(W * PANEL_SCALE));
+  c.height = Math.max(1, Math.round(H * PANEL_SCALE));
+  const t = c.getContext("2d");
+  t.scale(PANEL_SCALE, PANEL_SCALE);
+  paintLayers(t, W, H, layers, inkOf, k);
+  return c;
+}
+
+function paintPanel(ctx, scene) {
+  const { W, H, fall, glow } = scene;
+  let c = panelCache.get(scene);
+  if (!c || c.W !== W || c.H !== H || c.fall !== fall || c.glow !== glow) {
+    c = {
+      W, H, fall, glow,
+      fallLayer: fall > 0 ? bakeLayer(W, H, PANEL_LAYERS, () => PANEL_INK, fall) : null,
+      glowLayer: glow > 0 ? bakeLayer(W, H, PANEL_GLOW, (l) => l.color, glow) : null,
+    };
+    panelCache.set(scene, c);
+  }
+  if (c.fallLayer) {
     ctx.save();
     ctx.globalCompositeOperation = "multiply";
-    paintLayers(ctx, W, H, PANEL_LAYERS, () => PANEL_INK, fall);
+    ctx.drawImage(c.fallLayer, 0, 0, W, H);
     ctx.restore();
   }
-  if (glow > 0) {
+  if (c.glowLayer) {
     ctx.save();
     ctx.globalCompositeOperation = "color-dodge";
-    paintLayers(ctx, W, H, PANEL_GLOW, (l) => l.color, glow);
+    ctx.drawImage(c.glowLayer, 0, 0, W, H);
     ctx.restore();
   }
 }
@@ -550,7 +577,7 @@ function createWindowView(scene, dpr, { mode, bg }) {
       const half = size / 2 / scale;
       drawScene(ctx, scene, { mode, view: { x0: cx - half, y0: cy - half, x1: cx + half, y1: cy + half } });
       scene.specks?.draw(ctx);                                       // dust lying on the panel
-      paintPanel(ctx, scene.W, scene.H, scene.fall, scene.glow);      // the light box itself is brighter in the middle
+      paintPanel(ctx, scene);      // the light box itself is brighter in the middle
       // ...and its surface is matte, not smooth. The grain belongs to the panel, so it is left out of the lens:
       // the photo seen through the eyepiece must not pick up any extra grain.
       if (mode !== "pos") paintGrain(ctx, scene.W, scene.H, scene.grain);

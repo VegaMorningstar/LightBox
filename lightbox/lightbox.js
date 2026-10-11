@@ -20,16 +20,35 @@ const STRIP_ROT = [-0.3, 0.25, -0.15, 0.35, -0.25, 0.15]; // per-strip tilt, deg
 
 const columnsFor = (w) => (w >= 1100 ? 6 : w >= 800 ? 4 : w >= 520 ? 3 : 2);
 
+/* How many photos each strip gets. Strips are different lengths, like real rolls cut apart, but always the same
+   split for a given photo count, so every copy of the sheet (page, ghost, multiply) agrees. */
+const STRIP_WEIGHT = [1, 0.62, 0.86, 0.5, 1.12, 0.74];
+function stripSizes(total, cols) {
+  const w = Array.from({ length: cols }, (_, i) => STRIP_WEIGHT[i % STRIP_WEIGHT.length]);
+  const sum = w.reduce((a, b) => a + b, 0);
+  const min = total >= cols * 2 ? 2 : total >= cols ? 1 : 0;
+  const sizes = w.map((x) => Math.max(min, Math.floor((x / sum) * total)));
+  let left = total - sizes.reduce((a, b) => a + b, 0);
+  // hand out what is left (or take back any excess), largest remainder first
+  const order = w.map((x, i) => [(x / sum) * total - Math.floor((x / sum) * total), i]).sort((a, b) => b[0] - a[0]).map((e) => e[1]);
+  for (let k = 0; left > 0; k++, left--) sizes[order[k % cols]]++;
+  for (let k = 0; left < 0; k++) { const i = order[order.length - 1 - (k % cols)]; if (sizes[i] > min) { sizes[i]--; left++; } }
+  return sizes;
+}
+
 function buildSheet(photos, cols, fw, className) {
   const sheet = document.createElement("div");
   sheet.className = `lb-sheet ${className}`;
   sheet.style.setProperty("--fw", `${fw}px`);
   sheet.setAttribute("aria-hidden", className === "lb-neg" ? "false" : "true");
 
-  const perStrip = Math.ceil(photos.length / cols);
+  const sizes = stripSizes(photos.length, cols);
+  let first = 0;
   for (let s = 0; s < cols; s++) {
-    const slice = photos.slice(s * perStrip, (s + 1) * perStrip);
-    if (!slice.length) break;
+    const slice = photos.slice(first, first + sizes[s]);
+    const start = first;
+    first += sizes[s];
+    if (!slice.length) continue;
 
     const strip = document.createElement("div");
     strip.className = "lb-strip";
@@ -37,7 +56,7 @@ function buildSheet(photos, cols, fw, className) {
     strip.style.setProperty("--rot", `${STRIP_ROT[s % STRIP_ROT.length]}deg`);
 
     slice.forEach((src, i) => {
-      const n = s * perStrip + i + 1;
+      const n = start + i + 1;
       const frame = document.createElement("div");
       frame.className = "lb-frame";
 
