@@ -13,7 +13,65 @@ export const DEG_PER_ZOOM = 180;          // ring rotation per 1.0× of magnific
 export const GLASS_RATIO = 1.36;          // outer glass diameter / ring diameter
 export const DETENTS = [1, 1.5, 2, 2.5];  // the numbered points on the scale, where the ring locks
 
-const INK = "#ece4d0";
+const INK = "#ece4d0";           // paint colour, used as the fallback where filters are unavailable
+const PAINT = "#ebe3cb";         // aged cream enamel
+const LIGHT = 0.46;              // how far the engraved edges are offset by the light, in dial units
+
+/* Engraved, then filled with paint, like the numbers on a vintage lens. The marks are cut into the black bezel,
+ * and the enamel sits a little below the surface: the metal lip throws a soft shadow across the upper-left edge
+ * of each mark, a thin highlight catches the metal on its lower-right edge, the groove shows as a fine dark line
+ * around the paint, and the paint itself is slightly uneven, with tiny pits and a hand-filled edge.
+ *
+ * The scale turns with the ring, but the light does not, so setDialLight() re-aims the filter every time the
+ * ring turns: the shadows and highlights stay on the same sides as the bezel's own lighting. */
+function buildEngraving(svg) {
+  const id = `lb-engrave-${Math.random().toString(36).slice(2, 7)}`;
+  const defs = el("defs", {}, svg);
+  const f = el("filter", {
+    id, filterUnits: "userSpaceOnUse", x: -100, y: -100, width: 200, height: 200, "color-interpolation-filters": "sRGB",
+  }, defs);
+  const step = (name, attrs) => el(name, attrs, f);
+  // a rough, hand-filled edge on the paint
+  step("feTurbulence", { type: "fractalNoise", baseFrequency: 0.85, numOctaves: 2, seed: 3, result: "edgeNoise" });
+  step("feDisplacementMap", { in: "SourceGraphic", in2: "edgeNoise", scale: 0.26, xChannelSelector: "R", yChannelSelector: "G", result: "shape" });
+  step("feColorMatrix", { in: "shape", type: "matrix", values: "0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0", result: "A" });
+  // the groove: a fine dark line just outside the paint
+  step("feMorphology", { in: "A", operator: "dilate", radius: 0.34, result: "wide" });
+  step("feComposite", { in: "wide", in2: "A", operator: "out", result: "grooveBand" });
+  step("feFlood", { "flood-color": "#000", "flood-opacity": 0.9 });
+  step("feComposite", { in2: "grooveBand", operator: "in", result: "groove" });
+  // the enamel, with a slight tonal variation
+  step("feFlood", { "flood-color": PAINT });
+  step("feComposite", { in2: "A", operator: "in", result: "paint" });
+  step("feTurbulence", { type: "fractalNoise", baseFrequency: 1.3, numOctaves: 2, seed: 11, result: "grain" });
+  step("feColorMatrix", { in: "grain", type: "matrix", values: "0 0 0 0 0.3  0 0 0 0 0.22  0 0 0 0 0.12  8 0 0 0 -5.3", result: "pitsRaw" });
+  step("feComposite", { in: "pitsRaw", in2: "A", operator: "in", result: "pits" });
+  // the metal lip's shadow across the upper-left of each mark, and the catch-light on its lower-right edge
+  const off = step("feOffset", { in: "A", dx: LIGHT, dy: LIGHT, result: "shifted" });
+  step("feComposite", { in: "A", in2: "shifted", operator: "out", result: "shadowBand" });
+  step("feGaussianBlur", { in: "shadowBand", stdDeviation: 0.16, result: "shadowSoft" });
+  step("feFlood", { "flood-color": "#2a2112", "flood-opacity": 0.72 });
+  step("feComposite", { in2: "shadowSoft", operator: "in", result: "shadow" });
+  step("feComposite", { in: "shadowSoft", in2: "A", operator: "in", result: "shadowClip" });
+  step("feFlood", { "flood-color": "#2a2112", "flood-opacity": 0.7 });
+  step("feComposite", { in2: "shadowClip", operator: "in", result: "shadowInPaint" });
+  step("feComposite", { in: "shifted", in2: "A", operator: "out", result: "lipBand" });
+  step("feFlood", { "flood-color": "#fff6e2", "flood-opacity": 0.5 });
+  step("feComposite", { in2: "lipBand", operator: "in", result: "lip" });
+  const merge = step("feMerge", {});
+  ["groove", "paint", "pits", "shadowInPaint", "lip"].forEach((n) => el("feMergeNode", { in: n }, merge));
+  svg.__engrave = { offset: off };
+  return id;
+}
+
+/* point the light at the upper left of the screen, whatever angle the scale has been turned to */
+export function setDialLight(svg, deg) {
+  const o = svg.__engrave?.offset;
+  if (!o) return;
+  const a = (-deg * Math.PI) / 180, c = Math.cos(a), n = Math.sin(a);
+  o.setAttribute("dx", (LIGHT * (c - n)).toFixed(3));      // the screen-space direction (1, 1), turned back into dial space
+  o.setAttribute("dy", (LIGHT * (n + c)).toFixed(3));
+}
 
 function el(name, attrs = {}, parent) {
   const n = document.createElementNS(NS, name);
@@ -41,25 +99,28 @@ export function buildDial() {
   }, svg);
   el("circle", { r: 93.6, fill: "none", stroke: "rgba(255,255,255,.2)", "stroke-width": 0.35 }, svg);
 
+  // everything painted on the bezel shares one engraving filter
+  const painted = el("g", { filter: `url(#${buildEngraving(svg)})` }, svg);
+
   // scale: a tick every 0.05×, longer every 0.25×, numbers every 0.5×
   const steps = Math.round((ZOOM_MAX - ZOOM_MIN) / 0.05);
   for (let i = 0; i <= steps; i++) {
     const z = ZOOM_MIN + i * 0.05;
     const phi = -(z - ZOOM_MIN) * DEG_PER_ZOOM;
     const major = i % 5 === 0;
-    const g = el("g", { transform: `rotate(${phi})` }, svg);
+    const g = el("g", { transform: `rotate(${phi})` }, painted);
     el("line", {
       x1: 0, y1: -91.6, x2: 0, y2: major ? -83.4 : -87.6,
-      stroke: INK, "stroke-width": major ? 1.15 : 0.6, "stroke-linecap": "butt",
+      stroke: INK, "stroke-width": major ? 1.3 : 0.75, "stroke-linecap": "butt",
     }, g);
     if (i % 10 === 0) {
       const t = el("text", {
         transform: `rotate(${phi}) translate(0,-76.6)`,
         "text-anchor": "middle", "dominant-baseline": "central",
-        fill: INK, "font-size": 8.2, "font-weight": 600,
+        fill: INK, "font-size": 9, "font-weight": 600,
         "font-family": '"DIN Condensed","Avenir Next Condensed","Futura","Arial Narrow",sans-serif',
         "letter-spacing": 0.3,
-      }, svg);
+      }, painted);
       t.textContent = label(Number(z.toFixed(2)));
     }
   }
@@ -67,17 +128,17 @@ export function buildDial() {
   // maker's mark in the blank stretch of the dial, between 2.5 and 1. Each letter is set on the
   // ring's own radius and turned to point outward, so the word bends with the dial.
   const word = "LIGHTBOX";
-  const markR = 81.5;                 // concentric with the ring
-  const markStep = 3.7;               // degrees between letters
+  const markR = 80.6;                 // concentric with the ring
+  const markStep = 4.35;              // degrees between letters
   const markMid = 45;                 // middle of the blank stretch
   [...word].forEach((ch, i) => {
     const phi = markMid + (i - (word.length - 1) / 2) * markStep;
     const t = el("text", {
       transform: `rotate(${phi}) translate(0,-${markR})`,
       "text-anchor": "middle", "dominant-baseline": "central",
-      fill: INK, "fill-opacity": 0.85, "font-size": 5.8, "font-weight": 600,
+      fill: INK, "font-size": 7.8, "font-weight": 600,
       "font-family": '"DIN Condensed","Avenir Next Condensed","Futura","Arial Narrow",sans-serif',
-    }, svg);
+    }, painted);
     t.textContent = ch;
   });
   return svg;

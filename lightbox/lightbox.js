@@ -9,7 +9,7 @@
  */
 
 import { createSounds } from "./sounds.js";
-import { buildDial, buildTrim, DEG_PER_ZOOM, DETENTS, GLASS_RATIO, ZOOM_MAX, ZOOM_MIN } from "./dial.js";
+import { buildDial, buildTrim, setDialLight, DEG_PER_ZOOM, DETENTS, GLASS_RATIO, ZOOM_MAX, ZOOM_MIN } from "./dial.js";
 import { createGlass, createLens } from "./glass.js";
 import { createSpecks } from "./dust.js";
 import { createFilm } from "./film.js";
@@ -377,7 +377,9 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
   function setZoom(z, { silent = false } = {}) {
     const prev = zoom;
     zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, z));
-    loupe.dial.style.transform = `rotate(${(zoom - ZOOM_MIN) * DEG_PER_ZOOM}deg)`;
+    const dialDeg = (zoom - ZOOM_MIN) * DEG_PER_ZOOM;
+    loupe.dial.style.transform = `rotate(${dialDeg}deg)`;
+    setDialLight(loupe.dial, dialDeg);          // the light stays put while the scale turns
     setters.zoom?.(zoom);
     render();
     if (silent) return;
