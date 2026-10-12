@@ -1,23 +1,87 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <defs>
-    <radialGradient id="bg" cx="38%" cy="30%" r="90%"><stop offset="0" stop-color="#f1e6cb"/><stop offset="1" stop-color="#cdbd9d"/></radialGradient>
-    <radialGradient id="ring" cx="36%" cy="28%" r="80%"><stop offset="0" stop-color="#4a4641"/><stop offset=".7" stop-color="#14120f"/><stop offset="1" stop-color="#0b0a09"/></radialGradient>
-    <radialGradient id="glass" cx="40%" cy="32%" r="75%"><stop offset="0" stop-color="#fff7e2"/><stop offset=".6" stop-color="#e9b987"/><stop offset="1" stop-color="#9a5e36"/></radialGradient>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#e6dbc2"/><stop offset="1" stop-color="#cfc0a0"/></linearGradient>
+    <radialGradient id="glass" cx="40%" cy="30%" r="80%"><stop offset="0" stop-color="#fffaf0" stop-opacity=".95"/><stop offset=".55" stop-color="#eadcbc" stop-opacity=".8"/><stop offset="1" stop-color="#a98f68" stop-opacity=".7"/></radialGradient>
+    <radialGradient id="bezel" cx="36%" cy="28%" r="85%"><stop offset="0" stop-color="#4d4944"/><stop offset=".62" stop-color="#16130f"/><stop offset="1" stop-color="#090807"/></radialGradient>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3b6aab"/><stop offset=".36" stop-color="#8aaad2"/><stop offset=".55" stop-color="#f3c18a"/>
+      <stop offset=".635" stop-color="#e98a45"/><stop offset=".645" stop-color="#1c1a14"/><stop offset="1" stop-color="#0d0c09"/>
+    </linearGradient>
+    <radialGradient id="sun" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#fff3c8"/><stop offset=".35" stop-color="#ffd596" stop-opacity=".75"/><stop offset="1" stop-color="#ffb066" stop-opacity="0"/></radialGradient>
+    <linearGradient id="chrome" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fbf8f1"/><stop offset=".3" stop-color="#8d8984"/><stop offset=".55" stop-color="#2c2a28"/><stop offset=".8" stop-color="#cdc8be"/><stop offset="1" stop-color="#77736d"/></linearGradient>
+    <clipPath id="lens"><circle cx="256" cy="256" r="100"/></clipPath>
+    <clipPath id="outer"><circle cx="256" cy="256" r="216"/></clipPath>
+    <filter id="soft" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="14"/></filter>
   </defs>
-  <rect width="512" height="512" fill="url(#bg)"/>
-  <!-- two film strips under the eyepiece -->
-  <g fill="#1b1917">
-    <rect x="78" y="-10" width="120" height="532"/><rect x="314" y="-10" width="120" height="532"/>
+  <rect id="bg" width="512" height="512" fill="url(#bg)"/>
+  <g id="art">
+    <!-- the glass lifts a little off the board: a soft shadow -->
+    <ellipse cx="262" cy="290" rx="212" ry="204" fill="#3a2a10" opacity=".28" filter="url(#soft)"/>
+    <!-- outer glass, bending a hint of film at its edges -->
+    <circle cx="256" cy="256" r="216" fill="url(#glass)"/>
+    <g clip-path="url(#outer)">
+      <path d="M86 70 C58 190 58 322 86 442" fill="none" stroke="#1b1917" stroke-width="46" opacity=".78"/>
+      <path d="M426 70 C454 190 454 322 426 442" fill="none" stroke="#1b1917" stroke-width="46" opacity=".78"/>
+      <g fill="#ece0c2" opacity=".85">
+        <rect x="52" y="140" width="12" height="18" rx="3.5"/><rect x="47" y="200" width="12" height="18" rx="3.5"/><rect x="46" y="260" width="12" height="18" rx="3.5"/><rect x="49" y="320" width="12" height="18" rx="3.5"/><rect x="55" y="372" width="12" height="18" rx="3.5"/>
+        <rect x="448" y="140" width="12" height="18" rx="3.5"/><rect x="453" y="200" width="12" height="18" rx="3.5"/><rect x="454" y="260" width="12" height="18" rx="3.5"/><rect x="451" y="320" width="12" height="18" rx="3.5"/><rect x="445" y="372" width="12" height="18" rx="3.5"/>
+      </g>
+    </g>
+    <circle cx="256" cy="256" r="216" fill="none" stroke="#fffaf0" stroke-opacity=".85" stroke-width="3"/>
+    <path d="M118 120 A176 176 0 0 1 250 70" fill="none" stroke="#fff" stroke-opacity=".7" stroke-width="7" stroke-linecap="round"/>
+    <!-- black bezel with its knurled edge and a few engraved marks -->
+    <circle cx="256" cy="256" r="160" fill="url(#bezel)"/>
+    <circle cx="256" cy="256" r="154" fill="none" stroke="#3c3935" stroke-width="9" stroke-dasharray="3.9 3.95"/>
+    <circle cx="256" cy="256" r="159" fill="none" stroke="url(#chrome)" stroke-width="2.4"/>
+    <g stroke="#ebe3cb" stroke-linecap="round">
+      <line x1="256" y1="134" x2="256" y2="115" stroke-width="3.4" transform="rotate(0 256 256)"/>
+      <line x1="256" y1="126" x2="256" y2="116" stroke-width="2.0" transform="rotate(10 256 256)"/>
+      <line x1="256" y1="126" x2="256" y2="116" stroke-width="2.0" transform="rotate(20 256 256)"/>
+      <line x1="256" y1="126" x2="256" y2="116" stroke-width="2.0" transform="rotate(30 256 256)"/>
+      <line x1="256" y1="126" x2="256" y2="116" stroke-width="2.0" transform="rotate(40 256 256)"/>
+      <line x1="256" y1="126" x2="256" y2="116" stroke-width="2.0" transform="rotate(50 256 256)"/>
+      <line x1="256" y1="126" x2="256" y2="116" stroke-width="2.0" transform="rotate(60 256 256)"/>
+      <line x1="256" y1="126" x2="256" y2="116" stroke-width="2.0" transform="rotate(70 256 256)"/>
+      <line x1="256" y1="126" x2="256" y2="116" stroke-width="2.0" transform="rotate(80 256 256)"/>
+      <line x1="256" y1="134" x2="256" y2="115" stroke-width="3.4" transform="rotate(90 256 256)"/>
+      <line x1="256" y1="126" x2="256" y2="116" stroke-width="2.0" transform="rotate(100 256 256)"/>
+      <line x1="256" y1="126" x2="256" y2="116" stroke-width="2.0" transform="rotate(110 256 256)"/>
+      <line x1="256" y1="126" x2="256" y2="116" stroke-width="2.0" transform="rotate(120 256 256)"/>
+      <line x1="256" y1="126" x2="256" y2="116" stroke-width="2.0" transform="rotate(130 256 256)"/>
+      <line x1="256" y1="126" x2="256" y2="116" stroke-width="2.0" transform="rotate(140 256 256)"/>
+      <line x1="256" y1="126" x2="256" y2="116" stroke-width="2.0" transform="rotate(150 256 256)"/>
+      <line x1="256" y1="126" x2="256" y2="116" stroke-width="2.0" transform="rotate(160 256 256)"/>
+      <line x1="256" y1="126" x2="256" y2="116" stroke-width="2.0" transform="rotate(170 256 256)"/>
+      <line x1="256" y1="134" x2="256" y2="115" stroke-width="3.4" transform="rotate(180 256 256)"/>
+      <line x1="256" y1="126" x2="256" y2="116" stroke-width="2.0" transform="rotate(190 256 256)"/>
+      <line x1="256" y1="126" x2="256" y2="116" stroke-width="2.0" transform="rotate(200 256 256)"/>
+      <line x1="256" y1="126" x2="256" y2="116" stroke-width="2.0" transform="rotate(210 256 256)"/>
+      <line x1="256" y1="126" x2="256" y2="116" stroke-width="2.0" transform="rotate(220 256 256)"/>
+      <line x1="256" y1="126" x2="256" y2="116" stroke-width="2.0" transform="rotate(230 256 256)"/>
+      <line x1="256" y1="126" x2="256" y2="116" stroke-width="2.0" transform="rotate(240 256 256)"/>
+      <line x1="256" y1="126" x2="256" y2="116" stroke-width="2.0" transform="rotate(250 256 256)"/>
+      <line x1="256" y1="126" x2="256" y2="116" stroke-width="2.0" transform="rotate(260 256 256)"/>
+      <line x1="256" y1="134" x2="256" y2="115" stroke-width="3.4" transform="rotate(270 256 256)"/>
+      <line x1="256" y1="126" x2="256" y2="116" stroke-width="2.0" transform="rotate(280 256 256)"/>
+      <line x1="256" y1="126" x2="256" y2="116" stroke-width="2.0" transform="rotate(290 256 256)"/>
+      <line x1="256" y1="126" x2="256" y2="116" stroke-width="2.0" transform="rotate(300 256 256)"/>
+      <line x1="256" y1="126" x2="256" y2="116" stroke-width="2.0" transform="rotate(310 256 256)"/>
+      <line x1="256" y1="126" x2="256" y2="116" stroke-width="2.0" transform="rotate(320 256 256)"/>
+      <line x1="256" y1="126" x2="256" y2="116" stroke-width="2.0" transform="rotate(330 256 256)"/>
+      <line x1="256" y1="126" x2="256" y2="116" stroke-width="2.0" transform="rotate(340 256 256)"/>
+      <line x1="256" y1="126" x2="256" y2="116" stroke-width="2.0" transform="rotate(350 256 256)"/>
+    </g>
+    <circle cx="256" cy="256" r="112" fill="none" stroke="url(#chrome)" stroke-width="3"/>
+    <!-- the lens: a sunset, seen as a positive -->
+    <g clip-path="url(#lens)">
+      <rect x="150" y="150" width="212" height="212" fill="url(#sky)"/>
+      <circle cx="226" cy="294" r="62" fill="url(#sun)"/>
+      <rect x="150" y="290.5" width="212" height="72" fill="#12100c"/>
+      <path d="M156 298 h26 v-7 h14 v5 h12 v-4 h30 v6 h10 v-3 h58 v9 H156z" fill="#17150f"/>
+    </g>
+    <circle cx="256" cy="256" r="100" fill="none" stroke="#050505" stroke-width="6"/>
+    <path d="M190 206 A84 84 0 0 1 246 176" fill="none" stroke="#fff" stroke-opacity=".35" stroke-width="6" stroke-linecap="round"/>
+    <!-- the red index arrow, etched into the glass -->
+    <path d="M256 98 L238 62 Q256 54 274 62 Z" fill="#d6291f" stroke="#7a130c" stroke-width="1.2" stroke-opacity=".6"/>
   </g>
-  <g fill="#e9dcbf">
-    <g id="holes"><rect x="92" y="26" width="22" height="34" rx="6"/><rect x="92" y="96" width="22" height="34" rx="6"/><rect x="92" y="166" width="22" height="34" rx="6"/><rect x="92" y="236" width="22" height="34" rx="6"/><rect x="92" y="306" width="22" height="34" rx="6"/><rect x="92" y="376" width="22" height="34" rx="6"/><rect x="92" y="446" width="22" height="34" rx="6"/></g>
-    <use href="#holes" x="72"/><use href="#holes" x="236"/><use href="#holes" x="308"/>
-  </g>
-  <!-- the eyepiece: bezel, glass, index arrow -->
-  <circle cx="256" cy="262" r="186" fill="url(#ring)"/>
-  <circle cx="256" cy="262" r="186" fill="none" stroke="#8d8984" stroke-width="3"/>
-  <circle cx="256" cy="262" r="118" fill="url(#glass)"/>
-  <circle cx="256" cy="262" r="118" fill="none" stroke="#050505" stroke-width="5"/>
-  <circle cx="256" cy="262" r="152" fill="none" stroke="#ebe3cb" stroke-width="3" stroke-dasharray="2 9" stroke-linecap="round" opacity=".75"/>
-  <path d="M256 54 L240 20 Q256 14 272 20 Z" fill="#d6291f"/>
 </svg>

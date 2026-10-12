@@ -130,7 +130,7 @@ function buildEyepiece() {
 }
 
 /* A slim "Sliders" nav bar along the top; the sliders drop down from it, closed by default. */
-function buildControls(rows, { onOrganize, sliders = true } = {}) {
+function buildControls(rows, { onOrganize, onButton, sliders = true } = {}) {
   const nav = document.createElement("nav");
   nav.className = "lb-nav";
   nav.setAttribute("aria-label", "Sliders");
@@ -144,10 +144,19 @@ function buildControls(rows, { onOrganize, sliders = true } = {}) {
   const bar = div("lb-nav-bar");
   const organize = document.createElement("button");
   organize.type = "button";
-  organize.className = "lb-nav-organize";
-  organize.textContent = "Organize";
-  organize.title = "Put the film back where it started";
-  organize.addEventListener("click", () => onOrganize?.());
+  organize.className = "lb-nav-organize lb-nav-icon";
+  // circular arrows: two arcs chasing each other round
+  organize.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path class="arc" d="M5.47 8.96A7.2 7.2 0 0 1 17.09 6.91"/><path class="hd" d="M19.64 9.45L19.28 4.72L14.90 9.10Z"/><path class="arc" d="M18.53 15.04A7.2 7.2 0 0 1 6.91 17.09"/><path class="hd" d="M4.36 14.55L4.72 19.28L9.10 14.90Z"/></svg>';
+  organize.setAttribute("aria-label", "Organize: put the film back where it started");
+  organize.title = "Organize: put the film back where it started";
+  // a real push button: it clicks as it goes down, and again (more lightly) as it comes back up
+  organize.addEventListener("pointerdown", () => { onButton?.("down"); organize.dataset.sounded = "1"; });
+  organize.addEventListener("pointerup", () => onButton?.("up"));
+  organize.addEventListener("click", (e) => {
+    if (e.detail === 0 && !organize.dataset.sounded) { onButton?.("down"); setTimeout(() => onButton?.("up"), 70); }   // from the keyboard
+    delete organize.dataset.sounded;
+    onOrganize?.();
+  });
   bar.append(...(sliders ? [toggle] : []), organize);
   if (!sliders) nav.classList.add("lb-nav-min");     // just the Organize button, on the right
 
@@ -510,7 +519,8 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
       ...(GLASS_DRAG_ENABLED ? [{ group: "Sound · sliding", key: "vol_drag", name: "Glass drag", min: 0, max: 1, step: 0.05, value: vols.drag, onInput: (v) => sounds.setVolume("drag", v) }] : []),
       { group: "Sound · sliding", key: "vol_slide", name: "Eyepiece slide", min: 0, max: 1, step: 0.05, value: vols.slide, onInput: (v) => sounds.setVolume("slide", v) },
       { group: "Sound · sliding", key: "vol_crackle", name: "Film crackle", min: 0, max: 1, step: 0.05, value: vols.crackle, onInput: (v) => sounds.setVolume("crackle", v) },
-    ], { onOrganize: () => { film?.reset(); kick(); }, sliders });
+      { group: "Sound · interface", key: "vol_button", name: "Button click", min: 0, max: 1, step: 0.05, value: vols.button, onInput: (v) => sounds.setVolume("button", v) },
+    ], { onOrganize: () => { film?.reset(); kick(); }, onButton: (phase) => { sounds.unlock(); sounds.button(phase); }, sliders });
     setters = c.setters;
     root.classList.add("lb-has-nav");
     root.append(c.wrap);

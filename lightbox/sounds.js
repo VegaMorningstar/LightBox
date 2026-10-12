@@ -23,7 +23,7 @@ export const GLASS_DRAG_ENABLED = false;
 const grainWindow = Float32Array.from({ length: 48 }, (_, i) => 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / 47) );
 
 /* The level of every sound, 0 to 1 (the page has a slider for each). A sound's own level sits under the master. */
-export const DEFAULT_VOLUMES = { master: 1, tick: 0.6, notch: 0.6, lift: 0.6, place: 0.3, drag: 0.3, slide: 0.03, crackle: 1 };
+export const DEFAULT_VOLUMES = { master: 1, tick: 0.6, notch: 0.6, lift: 0.6, place: 0.3, button: 0.6, drag: 0.3, slide: 0.03, crackle: 1 };
 
 export function createSounds({ volumes = {} } = {}) {
   const vols = { ...DEFAULT_VOLUMES, ...volumes };
@@ -83,7 +83,7 @@ export function createSounds({ volumes = {} } = {}) {
       out.gain.value = vols.master;
       limiter.connect(out);
       out.connect(ctx.destination);
-      for (const k of ["tick", "notch", "lift", "place"]) { bus[k] = ctx.createGain(); bus[k].gain.value = vols[k]; bus[k].connect(limiter); }
+      for (const k of ["tick", "notch", "lift", "place", "button"]) { bus[k] = ctx.createGain(); bus[k].gain.value = vols[k]; bus[k].connect(limiter); }
       slideMaster = ctx.createGain();
       slideMaster.gain.value = vols.slide;
       slideMaster.connect(limiter);
@@ -329,6 +329,20 @@ export function createSounds({ volumes = {} } = {}) {
       };
       touch(t, 1);
       touch(t + 0.058, 0.3);
+    },
+    /* A push button: a crisp click as it goes down (a short bright tick over a small, low thud of the plunger), and a
+       lighter, higher one as it comes back up. phase is "down" or "up". */
+    button(phase = "down") {
+      if (vols.button <= 0 || !ensure()) return;
+      const t = ctx.currentTime + 0.002;
+      if (phase === "up") {
+        noiseBurst(t, { freq: 3600 * jitter(0.06), q: 1.4, peak: 0.34, decay: 0.008 }, bus.button);
+        tone(t, { type: "sine", from: 300 * jitter(0.05), to: 170, peak: 0.2, decay: 0.022, sweep: 0.015 }, bus.button);
+      } else {
+        noiseBurst(t, { freq: 2700 * jitter(0.06), q: 1.2, peak: 0.75, decay: 0.012 }, bus.button);
+        tone(t, { type: "sine", from: 190 * jitter(0.05), to: 90, peak: 0.5, decay: 0.04, sweep: 0.025 }, bus.button);
+        tone(t, { type: "triangle", from: 1900 * jitter(0.04), to: 1500, peak: 0.1, decay: 0.01, sweep: 0.008 }, bus.button);
+      }
     },
     /* the dull stop at either end of the dial */
     thud() {
