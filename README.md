@@ -4,6 +4,7 @@ A contact sheet of film negatives lying on a light box. Slide the eyepiece over 
 
 - **Drag** the eyepiece to slide it. **Double-press and hold** the glass to lift it off the board.
 - **Double-press and turn** the black ring to change the magnification.
+- **Push the eyepiece against the top or bottom edge** of the window while dragging and the page scrolls; the harder you push, the faster.
 - **Grab a film strip** to move it; the **Organize** button puts the film back.
 
 ## Run it

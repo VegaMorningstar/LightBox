@@ -553,6 +553,37 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     const k = Math.min(1, MAX_SPEED / Math.hypot(vx, vy) || 1);
     return { x: vx * k, y: vy * k };
   };
+  /* Scrolling by pushing against the edge of the window. While the eyepiece is being dragged, once its black ring (PB)
+     touches the top or bottom of the visible area (the top is the bottom of the controls bar), the page scrolls that
+     way, faster the further the eyepiece is pushed past the edge. The eyepiece stays under the pointer, so the film
+     slides past it. It stops at the ends of the page, and only a drag does it: a resting eyepiece never scrolls. */
+  const EDGE_MIN = 2, EDGE_MAX = 16;          // px per frame at 60 fps: about 120 up to 960 px a second
+  let edgeRaf = 0, edgeLast = 0, edgeCarry = 0;
+  const edgeRamp = (into) => EDGE_MIN + (EDGE_MAX - EDGE_MIN) * Math.min(1, into / (D * 0.75));
+  function edgeScroll(t) {
+    if (!dragging) { edgeRaf = 0; edgeCarry = 0; return; }
+    const dt = Math.min(50, edgeLast ? t - edgeLast : 16.7);
+    edgeLast = t;
+    const R = D / 2;
+    const topEdge = root.querySelector(".lb-nav-bar")?.getBoundingClientRect().bottom ?? 0;
+    const y = goal.y + stage.getBoundingClientRect().top;                 // where the eyepiece is headed, in the window
+    const intoTop = topEdge - (y - R);                                    // > 0 once the ring reaches the top edge
+    const intoBottom = y + R - innerHeight;                               // > 0 once it reaches the bottom edge
+    const maxY = document.documentElement.scrollHeight - innerHeight;
+    let v = 0;
+    if (intoTop > 0 && scrollY > 0) v = -edgeRamp(intoTop);
+    else if (intoBottom > 0 && scrollY < maxY - 1) v = edgeRamp(intoBottom);
+    if (v) {
+      const want = (v * dt) / 16.7 + edgeCarry;                          // (browsers scroll in whole pixels)
+      const whole = Math.trunc(want);
+      edgeCarry = want - whole;
+      if (whole) window.scrollBy(0, whole);                              // the scroll listener moves the eyepiece with it
+    } else {
+      edgeCarry = 0;
+    }
+    edgeRaf = requestAnimationFrame(edgeScroll);
+  }
+
   /* A release that happens outside the window (or over the browser UI) can go unreported, which
      would leave the eyepiece "held" and following the pointer. So a drag also ends when we see a
      move with no button down, when capture is lost, or when the window loses focus. */
@@ -570,6 +601,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     samples.length = 0;
     dragging = true;
     loupe.el.classList.add("is-drag");
+    if (!edgeRaf) { edgeLast = 0; edgeRaf = requestAnimationFrame(edgeScroll); }     // watch for the ring touching an edge
     // A single press and hold just moves the eyepiece along the board. A quick tap followed straight away by a
     // second press and hold on the glass (PA or PC) picks it up off the board; the bezel (PB) keeps its own
     // meaning: a single press moves, a double press turns it.
