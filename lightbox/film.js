@@ -219,12 +219,19 @@ export function createFilm(scene, cfg = { push: 1, flutter: 1 }) {
 
   function applyDom() {
     for (const s of scene.strips) {
+      // Writing a style makes the browser re-check the layout, so only what actually changed is written (most strips
+      // sit still while the eyepiece or one other strip moves).
       const t = `translate(${s.ox.toFixed(2)}px, ${s.oy.toFixed(2)}px) rotate(${s.rot.toFixed(5)}rad)`;
-      s.el.style.transform = t;
-      if (s.gel) s.gel.style.transform = t;
-      if (s.mel) s.mel.style.transform = t;
+      if (s._t !== t) {
+        s._t = t;
+        s.el.style.transform = t;
+        if (s.gel) s.gel.style.transform = t;
+        if (s.mel) s.mel.style.transform = t;
+      }
       for (const c of s.cells) {
         const ct = `translate(${c.x.toFixed(2)}px, ${c.dy.toFixed(2)}px) rotate(${c.ang.toFixed(5)}rad)`;
+        if (c._t === ct) continue;
+        c._t = ct;
         c.el.style.transform = ct;
         if (c.gel) c.gel.style.transform = ct;
         if (c.mel) c.mel.style.transform = ct;
@@ -237,12 +244,18 @@ export function createFilm(scene, cfg = { push: 1, flutter: 1 }) {
         const m = 80;                                  // generous margin: bent pieces reach a little past the box
         // the opaque part reaches 1px into the overlap, so the two parts always meet with no hairline between them
         const cut = s.over.map((poly) => inset(poly, 1)).filter((poly) => poly.length >= 3);
-        s.el.style.clipPath = `path(evenodd, 'M ${-m} ${-m} L ${s.w + m} ${-m} L ${s.w + m} ${s.h + m} L ${-m} ${s.h + m} Z ${cut.map(box).join(' ')}')`;
+        const hole = `path(evenodd, 'M ${-m} ${-m} L ${s.w + m} ${-m} L ${s.w + m} ${s.h + m} L ${-m} ${s.h + m} Z ${cut.map(box).join(' ')}')`;
         const region = `path('${s.over.map(box).join(' ')}')`;
-        // the twins fill the cut-away region: one see-through by density, one multiplied onto what is below
-        if (s.gel) { s.gel.style.clipPath = region; s.gel.style.visibility = "visible"; s.gel.style.opacity = String(1 - scene.stack); }
-        if (s.mel) { s.mel.style.clipPath = region; s.mel.style.visibility = "visible"; s.mel.style.opacity = String(scene.stack); }
-      } else {
+        const key = hole + region + scene.stack;
+        if (s._clip !== key) {
+          s._clip = key;
+          s.el.style.clipPath = hole;
+          // the twins fill the cut-away region: one see-through by density, one multiplied onto what is below
+          if (s.gel) { s.gel.style.clipPath = region; s.gel.style.visibility = "visible"; s.gel.style.opacity = String(1 - scene.stack); }
+          if (s.mel) { s.mel.style.clipPath = region; s.mel.style.visibility = "visible"; s.mel.style.opacity = String(scene.stack); }
+        }
+      } else if (s._clip) {
+        s._clip = "";
         s.el.style.clipPath = "";
         if (s.gel) s.gel.style.visibility = "hidden";
         if (s.mel) s.mel.style.visibility = "hidden";
@@ -289,9 +302,11 @@ export function createFilm(scene, cfg = { push: 1, flutter: 1 }) {
       const ny = Math.max(s.ay - ly, Math.min(s.ay + ly, wantY));
       if (nx !== wantX) s.vx = 0;
       if (ny !== wantY) s.vy = 0;
-      const [ox, oy] = [s.ox, s.oy];
-      s.ox = nx; s.oy = ny;
-      if (!allowed(s)) { s.ox = ox; s.oy = oy; s.vx = s.vy = 0; }   // never slide over a neighbour
+      if (nx !== s.ox || ny !== s.oy) {                              // (a strip that is not moving cannot have run into anything)
+        const [ox, oy] = [s.ox, s.oy];
+        s.ox = nx; s.oy = ny;
+        if (!allowed(s)) { s.ox = ox; s.oy = oy; s.vx = s.vy = 0; }   // never slide over a neighbour
+      }
       if (Math.abs(s.vx) < 0.0004) s.vx = 0;     // board friction holds it once it is nearly still
       if (Math.abs(s.vy) < 0.0004) s.vy = 0;
     }
@@ -345,6 +360,15 @@ export function createFilm(scene, cfg = { push: 1, flutter: 1 }) {
     step(dtMs, eye) {
       const speed = Math.hypot(eye.vx, eye.vy);
       const gate = smoothstep(V0, V1, speed);
+      // Nothing touching the film, and the film at rest (the usual case while the eyepiece just glides about):
+      // there is nothing to work out, so skip the physics for the frame.
+      const stirring = gate > 0.001 || held !== null || tidying || scene.strips.some((s) =>
+        s.vx || s.vy || s.cvx || s.cvy || s.cw || s.cells.some((c) => Math.abs(c.ang) > 0.0002 || Math.abs(c.omega) > 0.00001));
+      if (!stirring) {
+        if (wasActive) { findOverlaps(); applyDom(); wasActive = false; }
+        contact = 0; moveSlide = moveRub = 0;
+        return false;
+      }
       let remaining = Math.min(dtMs, 40);
       contactNow = 0;
       let active = gate > 0.001 || held !== null || tidying;

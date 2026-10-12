@@ -5,7 +5,8 @@
  * and through clear film, and vanish on the dark film base, as real dust would.
  *
  * Everything is in sheet pixels, the same space as the film, so the page and both glasses can draw it:
- *   specks.draw(ctx)   draws it at the context's current transform (it magnifies in the lens, staying crisp)
+ *   specks.draw(ctx, view)   draws it at the context's current transform (it magnifies in the lens, staying crisp);
+ *                            with a `view` ({x0, y0, x1, y1}) it skips the specks that are outside it
  */
 
 const DUST_INK = "36,27,17";
@@ -43,11 +44,12 @@ export function createSpecks(W, H, { seed = 7 } = {}) {
 
   return {
     dust,
-    draw(ctx) {
+    draw(ctx, view) {
       ctx.save();
       ctx.globalCompositeOperation = "multiply";
       ctx.lineCap = "round";
       for (const d of dust) {
+        if (view && (d.x < view.x0 - 14 || d.x > view.x1 + 14 || d.y < view.y0 - 14 || d.y > view.y1 + 14)) continue;   // not in this window
         if (d.fibre) {
           ctx.strokeStyle = `rgba(${DUST_INK},${d.alpha})`;
           ctx.lineWidth = d.w;

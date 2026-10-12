@@ -38,22 +38,28 @@ export function createSounds({ volumes = {} } = {}) {
   let dragNext = 0;        // when the next copy of the drag clip should start
   let slideNodes = null;
 
-  // Your own recordings of the glass, for local testing only. On localhost the lift and set-down sounds are played
-  // from clips cut from a voice memo (local-audio/, kept out of git and out of the published site). Pick which clip is
-  // which on local-audio/audition.html. Anywhere else, or if a clip is missing, the synthesised sounds play instead.
+  // Recordings of real glass, for the lift and the set-down (audio/). They are fetched when the sound is first unlocked;
+  // until they arrive, or if one is missing, the synthesised version plays instead. On localhost you can also audition
+  // other clips cut from a longer recording (local-audio/audition.html): a clip picked there is used in preference.
   const LOCAL = ["localhost", "127.0.0.1", "[::1]", ""].includes(location.hostname);
   const clips = { lift: null, place: null, drag: null };
   let clipsRequested = false;
-  const pick = (key, fallback) => { try { return localStorage.getItem(key) || fallback; } catch { return fallback; } };
+  const PUBLISHED = { lift: "../audio/glass-lift.wav", place: "../audio/glass-place.wav" };
+  const explicitPick = (key) => { try { return localStorage.getItem(key); } catch { return null; } };
+  async function fetchClip(path) {
+    try {
+      const res = await fetch(new URL(path, import.meta.url));
+      return res.ok ? await ctx.decodeAudioData(await res.arrayBuffer()) : null;
+    } catch { return null; }
+  }
   async function loadClips() {
-    if (!LOCAL || clipsRequested) return;
+    if (clipsRequested) return;
     clipsRequested = true;
-    for (const [name, key, fallback] of [["lift", "lb-clip-lift", "e02a"], ["place", "lb-clip-place", "e15"], ...(GLASS_DRAG_ENABLED ? [["drag", "lb-clip-drag", "e02b"]] : [])]) {
-      try {
-        const res = await fetch(new URL(`../local-audio/clips/${pick(key, fallback)}.wav`, import.meta.url));
-        if (res.ok) clips[name] = await ctx.decodeAudioData(await res.arrayBuffer());
-      } catch { /* no clip: the synthesised sound is used */ }
+    for (const [name, key] of [["lift", "lb-clip-lift"], ["place", "lb-clip-place"]]) {
+      const picked = LOCAL ? explicitPick(key) : null;
+      clips[name] = (picked && await fetchClip(`../local-audio/clips/${picked}.wav`)) || await fetchClip(PUBLISHED[name]);
     }
+    if (GLASS_DRAG_ENABLED && LOCAL) clips.drag = await fetchClip(`../local-audio/clips/${explicitPick("lb-clip-drag") || "e02b"}.wav`);   // local only
   }
   function playClip(buf, dest, gain = 0.9) {
     const src = ctx.createBufferSource();

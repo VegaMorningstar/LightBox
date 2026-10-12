@@ -187,6 +187,32 @@ function paintGrain(ctx, W, H, grain) {
   ctx.restore();
 }
 
+/* ---------- the page's overlay layers ----------
+ * The panel's falloff, its matte grain and the dust all darken the light the same way (multiply), so the page draws
+ * them together onto ONE canvas instead of three separate full-size layers. That is a third of the memory for the
+ * same picture, which is what a slower device runs out of first. The glow works differently (it brightens), so it
+ * stays its own layer, but it is smooth, so it is drawn at a quarter of the resolution and stretched. */
+export function paintOverlay(ctx, W, H, { fall, grain, specks }) {
+  ctx.save();
+  ctx.globalCompositeOperation = "source-over";
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(0, 0, W, H);                                    // white: multiplying by white changes nothing
+  if (fall > 0) { ctx.globalCompositeOperation = "multiply"; paintLayers(ctx, W, H, PANEL_LAYERS, () => PANEL_INK, fall); }
+  ctx.restore();
+  paintGrain(ctx, W, H, grain);
+  specks?.draw(ctx);
+}
+
+export function paintGlowLayer(canvas, W, H, glow, scale = 0.25) {
+  canvas.width = Math.max(1, Math.round(W * scale));
+  canvas.height = Math.max(1, Math.round(H * scale));
+  const c = canvas.getContext("2d");
+  c.clearRect(0, 0, canvas.width, canvas.height);
+  if (glow <= 0) return;
+  c.scale(scale, scale);
+  paintLayers(c, W, H, PANEL_GLOW, (l) => l.color, glow);
+}
+
 export function parseColor(str) {
   const c = document.createElement("canvas");
   c.width = c.height = 1;
@@ -301,6 +327,38 @@ function transparencyMask(img) {
   }
 }
 
+/* ---------- sharper photos, only when they are needed ----------
+ * The film strips and the outer glass use the small thumbnails. The eyepiece lens shows a frame magnified, and
+ * only when that needs more pixels than the thumbnail has does it load the mid-size version of that frame, and
+ * only for the few frames it is looking at (the least recently used are let go again). At the default zoom on a
+ * screen with 2x pixel density the thumbnail is already sharp enough, so nothing more is ever downloaded. */
+const HI_MAX = 10;                 // mid-size frames kept in memory at once
+const HI_FROM_PX = 560;            // use the mid-size version once a frame is drawn wider than this, in device pixels
+export const midOf = (src) => src.replace(/([^/]+)$/, "mid/$1");
+let hiFrame = 0;
+
+function posImage(scene, s, f) {
+  if (scene.drawScale * s.fw < HI_FROM_PX) return f.img;            // the thumbnail has enough pixels
+  f.hiUse = ++hiFrame;
+  if (f.hi) return f.hi;
+  if (!f.hiLoading && f.src) {
+    f.hiLoading = true;
+    const im = new Image();
+    im.decoding = "async";
+    im.onerror = () => { if (im.src.endsWith(f.src)) { f.hiLoading = false; f.hiFailed = true; } else im.src = f.src; };   // no mid-size file: use the original
+    im.onload = () => {
+      im.decode().catch(() => {}).then(() => {
+        f.hi = im; f.hiLoading = false;
+        const held = scene.strips.flatMap((st) => st.cells.map((c) => c.frame)).filter((fr) => fr.hi);
+        if (held.length > HI_MAX) held.sort((a, b) => a.hiUse - b.hiUse).slice(0, held.length - HI_MAX).forEach((fr) => { fr.hi = null; });
+        scene.hiLoaded?.();                                          // redraw with the sharper picture
+      });
+    };
+    im.src = f.hiFailed ? f.src : midOf(f.src);
+  }
+  return f.img;
+}
+
 export async function readScene(stage, root) {
   const sheet = stage.querySelector(".lb-neg");
   await Promise.all([...sheet.querySelectorAll("img")].map((i) => i.decode().catch(() => {})));
@@ -335,6 +393,8 @@ export async function readScene(stage, root) {
           frame: {
             x: f.offsetLeft, y: f.offsetTop,
             img: f.querySelector("img"),
+            src: f.querySelector("img")?.dataset.full ?? null,       // the original photo's address
+            hi: null, hiLoading: false, hiUse: 0, hiFailed: false,
             tagL: f.querySelector(".lb-tag.l")?.textContent ?? "",
             tagR: f.querySelector(".lb-tag.r")?.textContent ?? "",
             neg: null,
@@ -376,7 +436,7 @@ export function warmNegatives(scene, rs) {
 
 let scratch = null;
 /* a frame's photo with its own transparency baked in (drawn only where film lies over film) */
-function drawTranslucentPhoto(ctx, f, s, mode) {
+function drawTranslucentPhoto(ctx, scene, f, s, mode) {
   const m = ctx.getTransform();
   const k = Math.min(Math.hypot(m.a, m.b), 3);
   const w = Math.max(1, Math.round(s.fw * k)), h = Math.max(1, Math.round(s.fh * k));
@@ -388,7 +448,7 @@ function drawTranslucentPhoto(ctx, f, s, mode) {
   t.globalCompositeOperation = "source-over";
   t.clearRect(0, 0, scratch.width, scratch.height);
   if (mode === "neg") t.drawImage(f.neg, 0, 0, w, h);
-  else t.drawImage(f.img, ...coverCrop(f.img, w, h), 0, 0, w, h);
+  else { const im = posImage(scene, s, f); t.drawImage(im, ...coverCrop(im, w, h), 0, 0, w, h); }
   t.globalCompositeOperation = "destination-in";
   if (f.mask) t.drawImage(f.mask, 0, 0, w, h);
   else { t.fillStyle = `rgba(0,0,0,${filmAlpha(0.35)})`; t.fillRect(0, 0, w, h); }
@@ -397,7 +457,7 @@ function drawTranslucentPhoto(ctx, f, s, mode) {
 }
 
 /* a frame's photo for the multiply pass: opaque, with the board's colour divided out of a negative */
-function drawMultPhoto(ctx, f, s, mode, norm) {
+function drawMultPhoto(ctx, scene, f, s, mode, norm) {
   const m = ctx.getTransform();
   const k = Math.min(Math.hypot(m.a, m.b), 3);
   const w = Math.max(1, Math.round(s.fw * k)), h = Math.max(1, Math.round(s.fh * k));
@@ -409,7 +469,7 @@ function drawMultPhoto(ctx, f, s, mode, norm) {
   t.globalCompositeOperation = "source-over";
   t.clearRect(0, 0, scratch.width, scratch.height);
   if (mode === "neg") t.drawImage(f.neg, 0, 0, w, h);
-  else t.drawImage(f.img, ...coverCrop(f.img, w, h), 0, 0, w, h);
+  else { const im = posImage(scene, s, f); t.drawImage(im, ...coverCrop(im, w, h), 0, 0, w, h); }
   if (norm.dodge) {
     t.globalCompositeOperation = "color-dodge";          // backdrop / (1 - source) = photo / board, per channel
     t.fillStyle = norm.dodge;
@@ -440,13 +500,14 @@ function drawCell(ctx, scene, s, c, mode, variant = "opaque") {
   const f = c.frame;
   if (f.img.naturalWidth) {
     if (norm) {
-      if (mode !== "neg" || f.neg) drawMultPhoto(ctx, f, s, mode, norm);
+      if (mode !== "neg" || f.neg) drawMultPhoto(ctx, scene, f, s, mode, norm);
     } else if (translucent) {
-      if (mode !== "neg" || f.neg) drawTranslucentPhoto(ctx, f, s, mode);
+      if (mode !== "neg" || f.neg) drawTranslucentPhoto(ctx, scene, f, s, mode);
     } else if (mode === "neg") {
       if (f.neg) ctx.drawImage(f.neg, f.x, f.y, s.fw, s.fh);
     } else {
-      ctx.drawImage(f.img, ...coverCrop(f.img, s.fw, s.fh), f.x, f.y, s.fw, s.fh);
+      const im = posImage(scene, s, f);
+      ctx.drawImage(im, ...coverCrop(im, s.fw, s.fh), f.x, f.y, s.fw, s.fh);
     }
   }
 
@@ -560,23 +621,27 @@ function drawScene(ctx, scene, { mode, view }) {
 function createWindowView(scene, dpr, { mode, bg }) {
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d");
-  ctx.imageSmoothingQuality = "high";
   let size = 0;
+  const resize = (cssSize) => {
+    size = cssSize;
+    canvas.width = canvas.height = Math.max(1, Math.round(cssSize * dpr));
+  };
+  resize(1);
   return {
     canvas,
-    resize(cssSize) {
-      size = cssSize;
-      canvas.width = canvas.height = Math.max(1, Math.round(cssSize * dpr));
-    },
+    resize,
+    /* the pixel density this window is drawn at: lowered on a slow device, raised again when it keeps up */
+    setDpr(d) { dpr = d; resize(size); },
     render(cx, cy, scale = 1) {
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.fillStyle = bg;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       const k = dpr * scale;
+      scene.drawScale = k;                                 // lets the photo drawing pick a thumbnail or the sharper picture
       ctx.setTransform(k, 0, 0, k, (canvas.width - k * 2 * cx) / 2, (canvas.height - k * 2 * cy) / 2);
       const half = size / 2 / scale;
       drawScene(ctx, scene, { mode, view: { x0: cx - half, y0: cy - half, x1: cx + half, y1: cy + half } });
-      scene.specks?.draw(ctx);                                       // dust lying on the panel
+      scene.specks?.draw(ctx, { x0: cx - half, y0: cy - half, x1: cx + half, y1: cy + half });   // dust lying on the panel
       paintPanel(ctx, scene);      // the light box itself is brighter in the middle
       // ...and its surface is matte, not smooth. The grain belongs to the panel, so it is left out of the lens:
       // the photo seen through the eyepiece must not pick up any extra grain.

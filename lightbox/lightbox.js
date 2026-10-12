@@ -13,7 +13,7 @@ import { buildDial, buildTrim, setDialLight, DEG_PER_ZOOM, DETENTS, GLASS_RATIO,
 import { createGlass, createLens } from "./glass.js";
 import { createSpecks } from "./dust.js";
 import { createFilm } from "./film.js";
-import { buildFilmFilter, createLensView, createNegView, GRAIN_TILE, grainCanvas, panelBackground, panelGlowBackground, parseColor, readScene, warmNegatives } from "./raster.js";
+import { buildFilmFilter, createLensView, createNegView, paintGlowLayer, paintOverlay, parseColor, readScene, warmNegatives } from "./raster.js";
 
 const STRIP_DY = [0, 0.34, 0.12, 0.5, 0.05, 0.27];   // per-strip stagger, in frame widths
 const STRIP_ROT = [-0.3, 0.25, -0.15, 0.35, -0.25, 0.15]; // per-strip tilt, degrees
@@ -80,7 +80,9 @@ function buildSheet(photos, fw, className) {
       img.alt = className === "lb-neg" ? `Photo ${n}` : "";
       img.decoding = "async";
       img.onload = () => img.classList.add("is-loaded");
-      img.src = src;
+      img.dataset.full = src;                       // the original; the film itself only needs the small version
+      img.onerror = () => { if (img.src !== new URL(src, location.href).href) img.src = src; };   // no thumbnail: use the original
+      img.src = thumbOf(src);
       box.append(img);
 
       const l = document.createElement("span");
@@ -100,6 +102,9 @@ function buildSheet(photos, fw, className) {
   }
   return sheet;
 }
+
+/* the small version of a photo: sample-photos/01.jpg -> sample-photos/thumb/01.jpg (see tools/make-images.sh) */
+const thumbOf = (src) => src.replace(/([^/]+)$/, "thumb/$1");
 
 const div = (cls) => Object.assign(document.createElement("div"), { className: cls });
 
@@ -191,12 +196,13 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
   root.append(buildFilmFilter("lb-film-alpha", parseColor(getComputedStyle(root).getPropertyValue("--lb-bg").trim() || "#ddd0b6")));
 
   const loupe = buildEyepiece();
-  const panel = div("lb-panel");        // the light box's own unevenness, over the board and the film
-  const glowEl = div("lb-glow");          // brighter patches and colour drift, blended into the light
-  const specksEl = document.createElement("canvas");
-  specksEl.className = "lb-specks";        // dust on the panel
+  // The light box's own unevenness lies over the board and the film. Falloff, grain and dust all darken the light, so
+  // they share one canvas; the glow, which brightens it, is another.
+  const overlayEl = document.createElement("canvas");
+  overlayEl.className = "lb-overlay";
+  const glowEl = document.createElement("canvas");
+  glowEl.className = "lb-glow";
   let specks = null;
-  const grainEl = div("lb-grain");        // the panel's matte surface
   let grain = panelGrain;
   let falloff = panelFalloff;
   let glow = panelGlow;
@@ -223,6 +229,21 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
   const smooth = (x) => x * x * (3 - 2 * x);
   let raf = 0;
   let layoutId = 0;
+  // Quality control. The two glass passes are the costly part of a frame, and how many pixels they shade is what a
+  // slow device cannot afford. While the eyepiece is moving, the frame time is watched: if it stays too slow, the
+  // glass passes are drawn with fewer pixels (the outer glass first, since it is a frosted, bent view anyway, and
+  // the lens only a little); if it stays comfortably fast, they step back up. A fast device never leaves level 0.
+  // Add ?fixedquality to the address to switch this off.
+  const Q_LEVELS = [1, 0.8, 0.65, 0.5, 0.4];
+  // ?fixedquality stays at full quality; ?quality=N (0 = full ... 4 = lowest) stays at that level, to preview the look
+  const qParams = new URLSearchParams(location.search);
+  const qForced = qParams.has("quality") ? Math.max(0, Math.min(Q_LEVELS.length - 1, parseInt(qParams.get("quality"), 10) || 0)) : null;
+  let qLevel = qForced ?? 0;
+  const adaptive = qForced === null && !qParams.has("fixedquality");
+  const gov = { frames: [], good: 0, patience: 5, lastUp: -1e9 };
+  document.addEventListener("visibilitychange", () => { gov.frames.length = 0; });
+  const qOuter = () => Q_LEVELS[qLevel];
+  const qLens = () => 0.5 + 0.5 * Q_LEVELS[qLevel];
   let view = null;     // magnified window onto the lit sheet, drawn for the lens
   let negView = null;  // window onto the negative sheet, drawn for the outer glass
   let negSide = 0;
@@ -258,6 +279,35 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     }
   };
 
+  function setQuality(level) {
+    qLevel = Math.max(0, Math.min(Q_LEVELS.length - 1, level));
+    glass?.resize(Do, qOuter());
+    lens?.resize(G, qLens());
+    negView?.setDpr(glass.dpr);
+    view?.setDpr(lens.dpr);
+    root.dataset.quality = String(Q_LEVELS[qLevel]);
+    render();
+  }
+
+  function govern(raw) {
+    if (raw > 1500) { gov.frames.length = 0; return; }       // a long pause (a tab switch, say), not a measure of the drawing
+    gov.frames.push(raw);
+    if (gov.frames.length < 12) return;
+    const sorted = gov.frames.slice().sort((a, b) => a - b);
+    const median = sorted[sorted.length >> 1];
+    gov.frames.length = 0;
+    const now = performance.now();
+    if (median > 30 && qLevel < Q_LEVELS.length - 1) {          // slower than about 33 fps: draw the glass with fewer pixels
+      if (now - gov.lastUp < 4000) gov.patience = Math.min(40, gov.patience * 2);   // it was fine one step down: wait longer next time
+      gov.good = 0;
+      setQuality(qLevel + 1);
+    } else if (median < 20 && qLevel > 0) {                    // comfortably fast: try a step back up, after a while of it
+      if (++gov.good >= gov.patience) { gov.good = 0; gov.lastUp = now; setQuality(qLevel - 1); }
+    } else {
+      gov.good = 0;
+    }
+  }
+
   // Sliding on a board: remember how fast the eyepiece was moving when let go, then glide and
   // slow down with friction. Position eases toward `goal`, and coasting just keeps moving `goal`.
   const vel = { x: 0, y: 0 };          // px per ms
@@ -280,8 +330,10 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
   };
 
   const tick = (t) => {
-    const dt = Math.min(34, lastT ? t - lastT : 16);
+    const raw = lastT ? t - lastT : 0;
+    const dt = Math.min(34, lastT ? raw : 16);
     lastT = t;
+    if (adaptive && raw) govern(raw);
     if (coasting) coast(dt);
     // up fast and easing out, down a touch quicker; the sound of it touching down plays as it lands
     const wasUp = lift > 0;
@@ -310,23 +362,27 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     const done = !coasting && !filmMoving && lift === liftGoal && Math.abs(goal.x - cur.x) < 0.2 && Math.abs(goal.y - cur.y) < 0.2;
     if (done) { cur.x = goal.x; cur.y = goal.y; eyeV.x = eyeV.y = 0; sounds.slide(0); }
     render();
-    if (done) { raf = 0; lastT = 0; } else raf = requestAnimationFrame(tick);
+    if (done) { raf = 0; lastT = 0; gov.frames.length = 0; } else raf = requestAnimationFrame(tick);
   };
   const kick = () => { if (!raf) raf = requestAnimationFrame(tick); };
 
-  function drawSpecksDom() {
+  // Memory-poor devices get the overlay at a lower pixel density: it is grain and dust, so it stays convincing.
+  const overlayDpr = () => Math.min(window.devicePixelRatio || 1, (navigator.deviceMemory ?? 8) <= 4 ? 1.5 : 2);
+  function drawOverlay() {
     if (!specks) return;
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const dpr = overlayDpr();
     const W = stage.clientWidth, H = stage.offsetHeight;
-    if (specksEl.width !== Math.round(W * dpr) || specksEl.height !== Math.round(H * dpr)) {
-      specksEl.width = Math.round(W * dpr); specksEl.height = Math.round(H * dpr);
+    if (overlayEl.width !== Math.round(W * dpr) || overlayEl.height !== Math.round(H * dpr)) {
+      overlayEl.width = Math.round(W * dpr); overlayEl.height = Math.round(H * dpr);
     }
-    const c = specksEl.getContext("2d");
-    c.setTransform(1, 0, 0, 1, 0, 0);
-    c.clearRect(0, 0, specksEl.width, specksEl.height);
+    const c = overlayEl.getContext("2d");
     c.setTransform(dpr, 0, 0, dpr, 0, 0);
-    specks.draw(c);
+    paintOverlay(c, W, H, { fall: falloff, grain, specks });
   }
+  const drawGlow = () => paintGlowLayer(glowEl, stage.clientWidth, stage.offsetHeight, glow);
+  // sliders can fire many times a frame; repaint the overlay at most once per frame
+  let overlayQueued = false;
+  const queueOverlay = () => { if (!overlayQueued) { overlayQueued = true; requestAnimationFrame(() => { overlayQueued = false; drawOverlay(); }); } };
 
   let lastWidth = 0;
   function layout() {
@@ -345,8 +401,8 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     loupe.el.style.setProperty("--Do", `${Do}px`);
     loupe.el.style.setProperty("--D", `${D}px`);
     loupe.el.style.setProperty("--w", `${w}px`);
-    glass?.resize(Do);
-    lens?.resize(G);
+    glass?.resize(Do, qOuter());
+    lens?.resize(G, qLens());
     lensPad = Math.round(G * 0.2);
     view = null;
 
@@ -361,14 +417,10 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
       buildSheet(photos, fw, "lb-neg"),
       ...(glass && lens ? [buildSheet(photos, fw, "lb-ghost"), buildSheet(photos, fw, "lb-mult")] : []),
     );
-    stage.replaceChildren(filmLayer, specksEl, panel, glowEl, grainEl, loupe.el);
+    stage.replaceChildren(filmLayer, overlayEl, glowEl, loupe.el);
     specks = createSpecks(stage.clientWidth, stage.offsetHeight);
-    drawSpecksDom();
-    grainEl.style.backgroundImage = `url(${grainCanvas().toDataURL()})`;
-    grainEl.style.backgroundSize = `${GRAIN_TILE}px ${GRAIN_TILE}px`;
-    grainEl.style.opacity = String(Math.min(1, grain / 2));
-    panel.style.background = panelBackground(falloff);
-    glowEl.style.background = panelGlowBackground(glow);
+    drawOverlay();
+    drawGlow();
 
     if (!placed) {   // rest on the sheet, inside the first screenful
       goal.x = stage.clientWidth * 0.42;
@@ -393,6 +445,8 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
           negView.resize(negSide);
           view = createLensView(scene, lens.dpr);
           view.resize(G + lensPad * 2);
+          root.dataset.quality = String(Q_LEVELS[qLevel]);
+          scene.hiLoaded = () => { render(); };         // a sharper picture arrived: redraw the lens
           scene.specks = specks;
           scene.stack = stacking_; scene.fall = falloff; scene.glow = glow; scene.grain = grain;
           film = createFilm(scene, filmCfg);
@@ -441,9 +495,9 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
       { group: "Eyepiece", key: "zoom", name: "Magnification", min: ZOOM_MIN, max: ZOOM_MAX, step: 0.05, value: zoom, onInput: setZoom },
       { group: "Rim shadow", key: "shadow", name: "Shadow strength", min: 0, max: 6, step: 0.05, value: shadow, onInput: setShadow },
       { group: "Rim shadow", key: "fade", name: "Shadow fade", min: 0.1, max: 3, step: 0.05, value: shadowFade, onInput: setFade },
-      { group: "Light box", key: "falloff", name: "Panel falloff", min: 0, max: 2, step: 0.05, value: panelFalloff, onInput: (v) => { falloff = v; panel.style.background = panelBackground(v); if (sceneRef) sceneRef.fall = v; render(); } },
-      { group: "Light box", key: "glow", name: "Panel glow", min: 0, max: 2, step: 0.05, value: panelGlow, onInput: (v) => { glow = v; glowEl.style.background = panelGlowBackground(v); if (sceneRef) sceneRef.glow = v; render(); } },
-      { group: "Light box", key: "grain", name: "Panel grain", min: 0, max: 2, step: 0.05, value: panelGrain, onInput: (v) => { grain = v; grainEl.style.opacity = String(Math.min(1, v / 2)); if (sceneRef) sceneRef.grain = v; render(); } },
+      { group: "Light box", key: "falloff", name: "Panel falloff", min: 0, max: 2, step: 0.05, value: panelFalloff, onInput: (v) => { falloff = v; queueOverlay(); if (sceneRef) sceneRef.fall = v; render(); } },
+      { group: "Light box", key: "glow", name: "Panel glow", min: 0, max: 2, step: 0.05, value: panelGlow, onInput: (v) => { glow = v; drawGlow(); if (sceneRef) sceneRef.glow = v; render(); } },
+      { group: "Light box", key: "grain", name: "Panel grain", min: 0, max: 2, step: 0.05, value: panelGrain, onInput: (v) => { grain = v; queueOverlay(); if (sceneRef) sceneRef.grain = v; render(); } },
       { group: "Light box", key: "bleed", name: "Light bleed", min: 0, max: 2, step: 0.05, value: lightBleed, onInput: (v) => { bleed = v; render(); } },
       { group: "Film", key: "stacking", name: "Film stacking", min: 0, max: 1, step: 0.05, value: stacking, onInput: (v) => { stacking_ = v; if (sceneRef) sceneRef.stack = v; film?.setStack(v); render(); } },
       { group: "Film", key: "filmDrag", name: "Film drag", min: 0, max: 2, step: 0.05, value: filmDrag, onInput: (v) => { filmCfg.push = v; } },

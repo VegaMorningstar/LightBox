@@ -2,26 +2,49 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>LightBox</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%231b1917'/%3E%3Crect x='4' y='3' width='8' height='10' fill='%23fff7e2'/%3E%3C/svg%3E">
+  <meta name="description" content="A contact sheet of film negatives on a light box. Move the eyepiece over them to see the photos as positives.">
+
+  <!-- installable app -->
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#ddd0b6">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="LightBox">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="icon" href="icons/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+
+  <!-- start fetching everything in parallel instead of one script discovering the next -->
+  <link rel="modulepreload" href="lightbox/lightbox.js">
+  <link rel="modulepreload" href="lightbox/raster.js">
+  <link rel="modulepreload" href="lightbox/film.js">
+  <link rel="modulepreload" href="lightbox/glass.js">
+  <link rel="modulepreload" href="lightbox/dial.js">
+  <link rel="modulepreload" href="lightbox/sounds.js">
+  <link rel="modulepreload" href="lightbox/dust.js">
+  <link rel="preload" href="photos.json" as="fetch" crossorigin>
   <link rel="stylesheet" href="lightbox/lightbox.css">
   <style>
     html, body { margin: 0; background: #ddd0b6; }
     body { min-height: 100vh; }
     .lb-root { min-height: 100vh; }
     .hint {
-      position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%);
+      position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom)); transform: translateX(-50%);
       font: 500 11px/1 ui-monospace, "SF Mono", Menlo, monospace;
       letter-spacing: .22em; text-transform: uppercase;
       color: #7a6a4c; pointer-events: none; z-index: 2;
     }
     /* on a phone the hint would wrap over the film */
     @media (max-width: 640px) { .hint { display: none; } }
+    noscript p { margin: 0; padding: 40px 20px; text-align: center; font: 15px/1.5 -apple-system, "Helvetica Neue", sans-serif; color: #6b5b3d; }
   </style>
 </head>
 <body>
   <main id="sheet" aria-label="Photo contact sheet"></main>
+  <noscript><p>LightBox needs JavaScript to run.</p></noscript>
   <div class="hint">drag to slide · double-press the ring to turn · double-press the glass to lift</div>
   <script type="module">
     import { mountLightBox } from "./lightbox/lightbox.js";
@@ -36,6 +59,33 @@
       console.error(err);
       document.getElementById("sheet").textContent = `LightBox failed to start: ${err.message}`;
     }
+
+    // ---- app install and offline ----
+    // The service worker keeps the app and the photos so it opens offline and loads fast on repeat visits. It is not
+    // registered on localhost, where it would hold on to old code while you are editing; add ?pwa to try it there.
+    const local = ["localhost", "127.0.0.1", "[::1]", ""].includes(location.hostname);
+    if ("serviceWorker" in navigator && (!local || new URLSearchParams(location.search).has("pwa"))) {
+      const register = () => navigator.serviceWorker.register("sw.js").catch((err) => console.warn("Offline mode unavailable:", err));
+      // (this script waits on the photo list first, so the page may already have finished loading)
+      if (document.readyState === "complete") register(); else addEventListener("load", register);
+    }
+
+    // An Install button beside Organize, when the browser says the app can be installed (and it is not already).
+    let installPrompt = null;
+    const installButton = () => document.querySelector(".lb-nav-install");
+    addEventListener("beforeinstallprompt", (e) => {
+      e.preventDefault();
+      installPrompt = e;
+      const bar = document.querySelector(".lb-nav-bar");
+      if (!bar || installButton()) return;
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "lb-nav-organize lb-nav-install";
+      b.textContent = "Install";
+      b.addEventListener("click", async () => { installPrompt?.prompt(); await installPrompt?.userChoice; installPrompt = null; b.remove(); });
+      bar.append(b);                                  // after Organize, which stays first
+    });
+    addEventListener("appinstalled", () => { installPrompt = null; installButton()?.remove(); });
   </script>
 </body>
 </html>

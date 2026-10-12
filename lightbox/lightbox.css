@@ -83,12 +83,11 @@
 .lb-film { display: grid; isolation: isolate; }
 .lb-film > * { grid-area: 1 / 1; }
 
-/* the light panel's falloff and unevenness (the gradients are set from script, see raster.js) */
-.lb-panel { position: absolute; inset: 0; pointer-events: none; mix-blend-mode: multiply; }
-/* dust lying on the panel: they block a little light, so they multiply onto what is beneath */
-.lb-specks { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; mix-blend-mode: multiply; }
-.lb-glow { position: absolute; inset: 0; pointer-events: none; mix-blend-mode: color-dodge; }
-.lb-grain { position: absolute; inset: 0; pointer-events: none; mix-blend-mode: multiply; background-repeat: repeat; }
+/* the light panel's falloff, grain and dust are one canvas that darkens the light, and the glow is another that brightens it
+   (both are painted from script, see raster.js) */
+.lb-overlay, .lb-glow { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.lb-overlay { mix-blend-mode: multiply; }
+.lb-glow { mix-blend-mode: color-dodge; }
 .lb-cell:first-child {                    /* leader before the first frame */
   height: calc(var(--pt) + var(--pitch) + var(--ext));
   padding-top: var(--pt);
@@ -276,7 +275,7 @@
 }
 
 /* "Sliders" nav bar: slim bar along the top, the controls drop down from it */
-.lb-has-nav .lb-stage { margin-top: 40px; }
+.lb-has-nav .lb-stage { margin-top: calc(40px + env(safe-area-inset-top, 0px)); }
 .lb-nav {
   position: fixed;
   top: 0;
@@ -288,10 +287,13 @@
   text-transform: uppercase;
   color: #5f5036;
 }
+/* (installed on a phone, the bar also clears the notch and the rounded corners) */
 .lb-nav-bar {
   display: flex;
   align-items: stretch;
-  height: 40px;
+  box-sizing: border-box;
+  height: calc(40px + env(safe-area-inset-top, 0px));
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) 0 env(safe-area-inset-left, 0px);
   border-bottom: 1px solid rgba(60, 45, 20, .18);
   background: color-mix(in srgb, var(--lb-bg) 82%, transparent);
   -webkit-backdrop-filter: blur(10px);

@@ -1,2 +1,6 @@
 # Local-only audio (your own recordings). Not committed, not published.
 local-audio/
+
+# the smaller photo sizes are made from the originals (tools/make-images.sh); the deploy makes its own
+sample-photos/thumb/
+sample-photos/mid/

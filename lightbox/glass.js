@@ -98,10 +98,12 @@ void main() {
   // Light bleed. Light scatters inside the optics and the film base, so bright clear areas lift the dense
   // areas around them: a veil over everything (stronger when much of the view is bright) and a bloom
   // that spills from bright edges across the neighbouring dark ones.
-  vec3 haze = (textureLod(uTex, uv, 3.0).rgb + textureLod(uTex, uv, 4.0).rgb + textureLod(uTex, uv, 5.0).rgb) / 3.0;
-  float hl = dot(haze, vec3(0.2126, 0.7152, 0.0722));
-  vec3 spill = max(haze - col, 0.0);
-  col += uGlare * (0.2 * pow(hl, 1.5) * (1.0 - col) + 0.3 * spill * (1.0 - col));
+  if (uGlare > 0.001) {                  // (no glare asked for: skip the blurred reads altogether)
+    vec3 haze = (textureLod(uTex, uv, 3.0).rgb + textureLod(uTex, uv, 4.0).rgb + textureLod(uTex, uv, 5.0).rgb) / 3.0;
+    float hl = dot(haze, vec3(0.2126, 0.7152, 0.0722));
+    vec3 spill = max(haze - col, 0.0);
+    col += uGlare * (0.2 * pow(hl, 1.5) * (1.0 - col) + 0.3 * spill * (1.0 - col));
+  }
   outColor = vec4(col * cover, cover);
 }`;
 
@@ -145,8 +147,8 @@ function makePass(canvas, fragSrc, names) {
     U,
     get dpr() { return dpr; },
     /* canvas pixel size follows the glass diameter */
-    resize(cssSize) {
-      dpr = Math.min(2, window.devicePixelRatio || 1);
+    resize(cssSize, quality = 1) {
+      dpr = Math.min(2, window.devicePixelRatio || 1) * quality;      // quality < 1 on a slow device: fewer pixels to shade
       canvas.width = Math.round(cssSize * dpr);
       canvas.height = Math.round(cssSize * dpr);
       gl.viewport(0, 0, canvas.width, canvas.height);
@@ -181,7 +183,7 @@ export function createGlass(canvas) {
   let size = 1;
   return {
     get dpr() { return pass.dpr; },
-    resize(cssSize) { size = cssSize; pass.resize(cssSize); },
+    resize(cssSize, quality = 1) { size = cssSize; pass.resize(cssSize, quality); },
     /* view: the window canvas from raster.js, `side` css px across and centred on the glass;
        ringRadius: the eyepiece ring's outer radius */
     draw(view, side, ringRadius, lift = 0) {
@@ -208,9 +210,9 @@ export function createLens(canvas) {
   let size = 1;
   return {
     get dpr() { return pass.dpr; },
-    resize(cssSize) { size = cssSize; pass.resize(cssSize); },
+    resize(cssSize, quality = 1) { size = cssSize; pass.resize(cssSize, quality); },
     draw(view, pad, edge, glare = 0) {
-      pass.upload(view, true);               // mipmaps give the blurred light the glare is made from
+      pass.upload(view, glare > 0.001);       // mipmaps give the blurred light the glare is made from, so only build them when it is used
       pass.draw((gl, U) => {
         gl.uniform1f(U.uG, size);
         gl.uniform1f(U.uPad, pad);

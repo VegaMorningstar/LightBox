@@ -24,12 +24,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # only what the page needs, nothing else from the repo
+      # the page loads small versions of each photo; make them from the originals
+      - name: Make the small photo sizes
+        run: |
+          command -v ffmpeg >/dev/null || (sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg)
+          ./tools/make-images.sh sample-photos
+
+      # only what the page needs. The full-size originals are not published: the page never loads them.
       - name: Assemble the site
         run: |
-          mkdir _site
-          cp index.html photos.json _site/
-          cp -r lightbox sample-photos _site/
+          mkdir -p _site/sample-photos
+          cp index.html photos.json manifest.webmanifest sw.js _site/
+          cp -r lightbox icons audio _site/
+          cp -r sample-photos/thumb sample-photos/mid _site/sample-photos/
+          # give every deploy its own offline cache, so visitors always pick up the new version
+          sed -i "s/lightbox-v1/lightbox-${GITHUB_SHA::7}/" _site/sw.js
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
