@@ -333,7 +333,7 @@
 .lb-nav-min .lb-nav-bar { justify-content: flex-end; }
 .lb-nav-min .lb-nav-organize { text-transform: none; letter-spacing: .06em; font-size: 12px; }
 .lb-nav-organize:hover { background: #3a3024; color: var(--lb-bg); }
-/* The Organize button: a raised round push button. A warm caramel-brown rim, an ivory top and dark circular arrows. It sinks
+/* The Organize button: a raised round push button. A dark wine-red rim, an ivory top and dark circular arrows. It sinks
    a little when pressed. (These rules are more specific than the plain pill above, so they take over from it.) */
 .lb-nav-organize.lb-nav-icon {
   position: relative;
@@ -344,12 +344,12 @@
   border: 0;
   border-radius: 50%;
   color: #3b352f;
-  background: linear-gradient(145deg, #c08052 0%, #9c5d34 42%, #5e3418 100%);
+  background: linear-gradient(145deg, #94424d 0%, #6b202c 42%, #320c15 100%);
   box-shadow:
-    0 3px 7px rgba(70, 36, 12, .36),
-    0 1px 1.5px rgba(70, 36, 12, .5),
-    inset 0 1px 1px rgba(255, 228, 190, .55),
-    inset 0 -2px 3px rgba(60, 28, 8, .5);
+    0 3px 7px rgba(62, 14, 24, .38),
+    0 1px 1.5px rgba(62, 14, 24, .52),
+    inset 0 1px 1px rgba(255, 205, 212, .45),
+    inset 0 -2px 3px rgba(34, 6, 12, .55);
   transition: box-shadow .09s ease;
 }
 .lb-nav-organize.lb-nav-icon::before {                    /* the ivory top of the button */
@@ -364,10 +364,10 @@
 .lb-nav-organize.lb-nav-icon svg { position: absolute; inset: 11px; width: 18px; height: 18px; transition: transform .09s ease; }
 .lb-nav-organize.lb-nav-icon .arc { fill: none; stroke: currentColor; stroke-width: 2.5; stroke-linecap: butt; }
 .lb-nav-organize.lb-nav-icon .hd { fill: currentColor; stroke: none; }
-.lb-nav-organize.lb-nav-icon:hover { background: linear-gradient(145deg, #cc8d5f 0%, #a96a3d 42%, #683a1c 100%); color: #3b352f; }
+.lb-nav-organize.lb-nav-icon:hover { background: linear-gradient(145deg, #a24e59 0%, #78283a 42%, #3a1019 100%); color: #3b352f; }
 .lb-nav-organize.lb-nav-icon:active {
   transform: none;
-  box-shadow: 0 1px 2px rgba(70, 36, 12, .5), inset 0 1px 2px rgba(60, 28, 8, .6), inset 0 -1px 1px rgba(255, 228, 190, .28);
+  box-shadow: 0 1px 2px rgba(62, 14, 24, .52), inset 0 1px 2px rgba(34, 6, 12, .65), inset 0 -1px 1px rgba(255, 205, 212, .24);
 }
 .lb-nav-organize.lb-nav-icon:active::before { transform: translateY(1.5px) scale(.965); box-shadow: 0 .5px 1px rgba(34, 20, 10, .5), inset 0 2px 3px rgba(60, 40, 20, .35); }
 .lb-nav-organize.lb-nav-icon:active svg { transform: translateY(1.5px) scale(.965); }
