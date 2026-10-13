@@ -23,7 +23,7 @@ export const GLASS_DRAG_ENABLED = false;
 const grainWindow = Float32Array.from({ length: 48 }, (_, i) => 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / 47) );
 
 /* The level of every sound, 0 to 1 (the page has a slider for each). A sound's own level sits under the master. */
-export const DEFAULT_VOLUMES = { master: 1, tick: 0.3, notch: 0.6, lift: 0.6, place: 0.3, button: 0.6, drag: 0.3, slide: 0.01, crackle: 1 };
+export const DEFAULT_VOLUMES = { master: 1, tick: 0.3, notch: 0.6, lift: 0.6, place: 0.15, thump: 0.6, button: 0.6, drag: 0.3, slide: 0.01, crackle: 1 };
 
 export function createSounds({ volumes = {} } = {}) {
   const vols = { ...DEFAULT_VOLUMES, ...volumes };
@@ -83,7 +83,7 @@ export function createSounds({ volumes = {} } = {}) {
       out.gain.value = vols.master;
       limiter.connect(out);
       out.connect(ctx.destination);
-      for (const k of ["tick", "notch", "lift", "place", "button"]) { bus[k] = ctx.createGain(); bus[k].gain.value = vols[k]; bus[k].connect(limiter); }
+      for (const k of ["tick", "notch", "lift", "place", "thump", "button"]) { bus[k] = ctx.createGain(); bus[k].gain.value = vols[k]; bus[k].connect(limiter); }
       slideMaster = ctx.createGain();
       slideMaster.gain.value = vols.slide;
       slideMaster.connect(limiter);
@@ -309,7 +309,8 @@ export function createSounds({ volumes = {} } = {}) {
     /* The glass coming to rest on the board: a dull, damped touch, not a ring. A short soft thump, a brush of
        the matte surface, and only the faintest glassy colour, which dies almost at once; then a smaller second
        touch as it settles. */
-    place() {
+    place(force = 1) {
+      this.thump(force);                     // the board's own answer, in parallel with the glass
       if (vols.place <= 0 || !ensure()) return;
       if (clips.place) { playClip(clips.place, bus.place); return; }
       const t = ctx.currentTime + 0.002;
@@ -329,6 +330,22 @@ export function createSounds({ volumes = {} } = {}) {
       };
       touch(t, 1);
       touch(t + 0.058, 0.3);
+    },
+    /* The glass landing felt through the matte board, like a finger tapping a drum skin: a short soft low "bom" that drops a little
+       in pitch as the skin settles, a few membrane overtones (a round membrane rings at 1, 1.59, 2.14, 2.30 times its note, and
+       they die much sooner than the note), and the dull pad of the tap itself. Nothing bright and nothing that rings on.
+       force: 0..about 1.4, how hard it came down. */
+    thump(force = 1) {
+      if (vols.thump <= 0 || !ensure()) return;
+      const t = ctx.currentTime + 0.002;
+      const f0 = 118 * jitter(0.04);
+      const k = Math.min(1.4, force);
+      tone(t, { type: "sine", from: f0 * 1.35, to: f0, peak: 0.85 * k, decay: 0.2, sweep: 0.05 }, bus.thump);       // the skin's note, settling
+      for (const [ratio, amp, dec] of [[1.59, 0.3, 0.1], [2.14, 0.2, 0.07], [2.3, 0.14, 0.055], [2.65, 0.08, 0.04]]) {
+        tone(t, { type: "sine", from: f0 * ratio * 1.12, to: f0 * ratio, peak: amp * k, decay: dec, sweep: 0.04 }, bus.thump);
+      }
+      noiseBurst(t, { type: "lowpass", freq: 650 * jitter(0.08), q: 0.6, peak: 0.5 * k, decay: 0.02, attack: 0.001 }, bus.thump);   // the pad of the tap
+      noiseBurst(t, { freq: 240 * jitter(0.06), q: 0.8, peak: 0.28 * k, decay: 0.07 }, bus.thump);                                     // the body of the skin
     },
     /* A push button: a crisp click as it goes down (a short bright tick over a small, low thud of the plunger), and a
        lighter, higher one as it comes back up. phase is "down" or "up". */

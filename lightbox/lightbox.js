@@ -160,12 +160,17 @@ function buildControls(rows, { onOrganize, onButton, sliders = true } = {}) {
   panel.id = `lb-sliders-${Math.random().toString(36).slice(2, 7)}`;
   panel.hidden = true;
   toggle.setAttribute("aria-controls", panel.id);
-  toggle.addEventListener("click", () => {
-    const open = panel.hidden;
+  const setOpen = (open) => {
     panel.hidden = !open;
     toggle.setAttribute("aria-expanded", String(open));
     setPressed(toggle, open);
-  });
+  };
+  toggle.addEventListener("click", () => setOpen(panel.hidden));
+  // a press anywhere else closes it, so it never has to be put away by hand
+  document.addEventListener("pointerdown", (e) => {
+    if (!panel.hidden && !e.target.closest(".lb-nav-panel") && !toggle.contains(e.target)) setOpen(false);
+  }, true);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !panel.hidden) setOpen(false); });
 
   const setters = {};
   let lastGroup = null;
@@ -244,6 +249,8 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
   // effect on the film and makes no sliding or crackling sounds.
   let lift = 0, liftGoal = 0;
   let liftHeight = 1.25;               // how high it is lifted (a multiple of the old lift), for everything that depends on height
+  let landShake = 1;                   // how hard the surface and the film shiver when the eyepiece is set down
+  let shakeY = 0, shakeX = 0, shakeVY = 0, shakeVX = 0;   // the board's own shiver (a few tenths of a pixel)
   let liftTime = 200;                  // ms to reach the top; setting it down takes about half that
   let glassTap = null, glassPress = null;   // taps on the glass, to tell a double press from a single one
   const LIFT_AREA = 0.4;               // extra area the lens takes in at full lift
@@ -272,7 +279,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
   let film = null;     // friction between eyepiece, film and board
   let gripping = false;                // a film strip is being held
   let sceneRef = null;                 // the scene the glasses draw, so sliders can update it
-  const filmCfg = { push: filmDrag, flutter: filmFlutter };
+  const filmCfg = { push: filmDrag, flutter: filmFlutter, rub: 0.5 };   // rub: how much a strip moved over another drags the one beneath
   const eyeV = { x: 0, y: 0 };         // eyepiece velocity in px per ms, smoothed
   let fade = shadowFade;
   let lensPad = 0;
@@ -415,6 +422,30 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     if (Math.hypot(vel.x, vel.y) < 0.02) coasting = false;
   };
 
+  // Set down on the board, the eyepiece gives it a jolt: the film right under it gives, and the board's surface (its grain and
+  // dust) gives a little, once, and eases back.
+  function landed() {
+    if (landShake <= 0) return;
+    const k = landShake * Math.min(1.4, 0.55 + 0.35 * liftHeight);      // dropped from higher, it lands harder
+    film?.thump({ x: cur.x, y: cur.y, radius: Do / 2 }, k);
+    shakeVY += 0.05 * k; shakeVX += 0.008 * k;
+  }
+  function stepShake(dt) {
+    if (!shakeX && !shakeY && !shakeVX && !shakeVY) return false;
+    const w = 0.02, z = 1;                          // critically damped: one give and a return, no ringing
+    for (let rest = dt; rest > 0; rest -= 4) {
+      const h = Math.min(4, rest);
+      shakeVY += (-w * w * shakeY - 2 * z * w * shakeVY) * h;
+      shakeVX += (-w * w * shakeX - 2 * z * w * shakeVX) * h;
+      shakeY += shakeVY * h; shakeX += shakeVX * h;
+    }
+    if (Math.abs(shakeX) < 0.01 && Math.abs(shakeY) < 0.01 && Math.abs(shakeVX) < 0.0002 && Math.abs(shakeVY) < 0.0002) shakeX = shakeY = shakeVX = shakeVY = 0;
+    const tr = shakeX || shakeY ? `translate(${shakeX.toFixed(2)}px, ${shakeY.toFixed(2)}px)` : "";
+    overlayEl.style.transform = tr;
+    dustEl.style.transform = tr;
+    return true;
+  }
+
   const tick = (t) => {
     const raw = lastT ? t - lastT : 0;
     const dt = Math.min(34, lastT ? raw : 16);
@@ -425,7 +456,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     const wasUp = lift > 0;
     if (lift < liftGoal) lift = Math.min(liftGoal, lift + dt / liftTime);
     else if (lift > liftGoal) lift = Math.max(liftGoal, lift - dt / Math.max(170, liftTime * 0.45));
-    if (wasUp && lift === 0) sounds.place();
+    if (wasUp && lift === 0) { sounds.place(Math.min(1.4, 0.55 + 0.35 * liftHeight)); landed(); }
     const px = cur.x, py = cur.y;
     cur.x += (goal.x - cur.x) * 0.35;
     cur.y += (goal.y - cur.y) * 0.35;
@@ -445,7 +476,8 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     sounds.crackle(film ? Math.max(film.contact, film.moveRub) : 0, dt);
     // The glass edge dragging across the board: only while the eyepiece is down on the surface and moving.
     sounds.glassDrag(Math.hypot(eyeV.x, eyeV.y) * touch / 1.6);
-    const done = !coasting && !filmMoving && lift === liftGoal && Math.abs(goal.x - cur.x) < 0.2 && Math.abs(goal.y - cur.y) < 0.2;
+    const shaking = stepShake(dt);
+    const done = !coasting && !filmMoving && !shaking && lift === liftGoal && Math.abs(goal.x - cur.x) < 0.2 && Math.abs(goal.y - cur.y) < 0.2;
     if (done) { cur.x = goal.x; cur.y = goal.y; eyeV.x = eyeV.y = 0; sounds.slide(0); }
     render();
     if (done) { raf = 0; lastT = 0; gov.frames.length = 0; } else raf = requestAnimationFrame(tick);
@@ -602,6 +634,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
       { group: "Outer glass (PA)", key: "paCast", name: "Light and shadow on the board", min: 0, max: 2, step: 0.05, value: pa.cast, onInput: (v) => { pa.cast = v; render(); } },
       { group: "Lifting", key: "liftHeight", name: "Lift height", min: 0.5, max: 3, step: 0.05, value: liftHeight, onInput: (v) => { liftHeight = v; render(); } },
       { group: "Lifting", key: "liftTime", name: "Lift time (ms)", min: 150, max: 2500, step: 50, value: liftTime, onInput: (v) => { liftTime = v; } },
+      { group: "Lifting", key: "landShake", name: "Landing shake", min: 0, max: 2, step: 0.05, value: landShake, onInput: (v) => { landShake = v; } },
       { group: "Outer glass (PA)", key: "paReflect", name: "Wall reflections", min: 0, max: 1, step: 0.05, value: pa.reflect, onInput: (v) => { pa.reflect = v; render(); } },
       { group: "Outer glass (PA)", key: "paIndex", name: "Glass index", min: 1.2, max: 2, step: 0.01, value: pa.index, onInput: (v) => { pa.index = v; render(); } },
       { group: "Outer glass (PA)", key: "paDisp", name: "Extra colour spread", min: 0, max: 0.2, step: 0.005, value: pa.dispersion, onInput: (v) => { pa.dispersion = v; render(); } },
@@ -613,11 +646,13 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
       { group: "Light box", key: "seepSpread", name: "Seep distance (px)", min: 8, max: 120, step: 1, value: seepSpread, onInput: (v) => { spread = v; render(); } },
       { group: "Film", key: "stacking", name: "Film stacking", min: 0, max: 1, step: 0.05, value: stacking, onInput: (v) => { stacking_ = v; if (sceneRef) sceneRef.stack = v; film?.setStack(v); render(); } },
       { group: "Film", key: "filmDrag", name: "Film drag", min: 0, max: 2, step: 0.05, value: filmDrag, onInput: (v) => { filmCfg.push = v; } },
+      { group: "Film", key: "stripRub", name: "Strip-on-strip drag", min: 0, max: 3, step: 0.05, value: filmCfg.rub, onInput: (v) => { filmCfg.rub = v; } },
       { group: "Film", key: "filmFlutter", name: "Film flutter", min: 0, max: 2, step: 0.05, value: filmFlutter, onInput: (v) => { filmCfg.flutter = v; } },
       { group: "Sound · master", key: "vol_master", name: "Master volume", min: 0, max: 1, step: 0.05, value: vols.master, onInput: (v) => sounds.setVolume("master", v) },
       { group: "Sound · dial", key: "vol_tick", name: "Dial ticks", min: 0, max: 1, step: 0.05, value: vols.tick, onInput: (v) => sounds.setVolume("tick", v) },
       { group: "Sound · dial", key: "vol_notch", name: "Notch & end stops", min: 0, max: 1, step: 0.05, value: vols.notch, onInput: (v) => sounds.setVolume("notch", v) },
       { group: "Sound · lifting", key: "vol_lift", name: "Lift", min: 0, max: 1, step: 0.05, value: vols.lift, onInput: (v) => sounds.setVolume("lift", v) },
+      { group: "Sound · lifting", key: "vol_thump", name: "Surface thump", min: 0, max: 1, step: 0.05, value: vols.thump, onInput: (v) => sounds.setVolume("thump", v) },
       { group: "Sound · lifting", key: "vol_place", name: "Set-down", min: 0, max: 1, step: 0.05, value: vols.place, onInput: (v) => sounds.setVolume("place", v) },
       ...(GLASS_DRAG_ENABLED ? [{ group: "Sound · sliding", key: "vol_drag", name: "Glass drag", min: 0, max: 1, step: 0.05, value: vols.drag, onInput: (v) => sounds.setVolume("drag", v) }] : []),
       { group: "Sound · sliding", key: "vol_slide", name: "Eyepiece slide", min: 0, max: 1, step: 0.01, value: vols.slide, onInput: (v) => sounds.setVolume("slide", v) },
