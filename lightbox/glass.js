@@ -295,11 +295,13 @@ void main() {
   // Light bleed. Light scatters inside the optics and the film base, so bright clear areas lift the dense
   // areas around them: a veil over everything (stronger when much of the view is bright) and a bloom
   // that spills from bright edges across the neighbouring dark ones.
-  if (uGlare > 0.001) {                  // (no glare asked for: skip the blurred reads altogether)
+  // The glare belongs to the rim (it flares round the glass's edge); the middle is clear, so the picture there is exactly as it is.
+  float gw = smoothstep(0.0, 0.5, t);
+  if (uGlare > 0.001 && gw > 0.0) {      // (no glare asked for, or in the clear middle: skip the blurred reads altogether)
     vec3 haze = (textureLod(uTex, uv, 3.0).rgb + textureLod(uTex, uv, 4.0).rgb + textureLod(uTex, uv, 5.0).rgb) / 3.0;
     float hl = dot(haze, vec3(0.2126, 0.7152, 0.0722));
     vec3 spill = max(haze - col, 0.0);
-    col += uGlare * (0.2 * pow(hl, 1.5) * (1.0 - col) + 0.3 * spill * (1.0 - col));
+    col += uGlare * gw * (0.2 * pow(hl, 1.5) * (1.0 - col) + 0.3 * spill * (1.0 - col));
   }
   outColor = vec4(col * cover, cover);
 }`;

@@ -2,12 +2,15 @@
    Self-contained: pair with lightbox.js. Theme it via the --lb-* variables. */
 
 .lb-root {
-  --lb-bg: #ddd0b6;          /* beige table */
-  --lb-lit: #fff7e2;         /* light-box glow */
+  --lb-bg: #eadec6;          /* beige table */
+  --lb-lit: #fcf2dc;         /* light-box glow */
   --lb-film: #1b1917;        /* film base */
   --lb-edge-ink: #d89a4c;    /* printed edge text */
+  --lb-dark: #120c08;        /* the dark room around the panel */
+  --edge-m: clamp(8px, 1.4vw, 20px);    /* the dark margin around the panel */
+  --edge-f: clamp(26px, 4vw, 58px);     /* how far the panel's light falls off inside its rim */
   position: relative;
-  background: var(--lb-bg);
+  background: var(--lb-dark);
   overflow: hidden;
   touch-action: pan-y;
   user-select: none;                 /* dragging must never select the photos or the edge text */
@@ -17,7 +20,9 @@
 
 .lb-stage {
   position: relative;
+  isolation: isolate;                       /* so the buttons can sit just above the panel's colour, under everything else */
   display: grid;
+  background: var(--lb-bg);                 /* the lit panel itself; the root behind it is the dark room */
 }
 .lb-stage > * { grid-area: 1 / 1; }
 
@@ -34,7 +39,7 @@
   align-items: flex-start;
   flex-wrap: wrap;                      /* more strips than fit across wrap onto another row */
   gap: calc(var(--fw) * 0.3) calc(var(--fw) * 0.16);
-  padding: var(--pad) var(--pad) calc(var(--pad) + var(--fw) * 0.5);
+  padding: var(--pad-top, var(--pad)) var(--pad) calc(var(--pad) + var(--fw) * 0.5);
   pointer-events: none;
 }
 
@@ -80,13 +85,31 @@
 
 /* the film layer is its own group, so the strips' stacking never reaches the eyepiece and the multiply
    blend only sees the film beneath it */
-.lb-film { display: grid; isolation: isolate; }
+.lb-film { display: grid; isolation: isolate; pointer-events: none; }   /* presses go to the page: it works out what is under the pointer itself */
 .lb-film > * { grid-area: 1 / 1; }
 
 /* the light panel's falloff, grain and dust are one canvas that darkens the light, and the glow is another that brightens it
    (both are painted from script, see raster.js) */
 .lb-overlay, .lb-glow { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.lb-seep { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; mix-blend-mode: screen; }
 .lb-overlay { mix-blend-mode: multiply; }
+/* The light box is a lit panel with rounded corners in a dark room: past its rim the page goes dark, and the light falls off
+   softly toward the rim (see the photograph of a real one). One element does both: its box-shadow paints the dark outside
+   the panel, and its inset shadows darken the panel toward its edge. */
+.lb-edge {
+  position: absolute;
+  inset: var(--edge-m);
+  border-radius: calc(var(--edge-f) * 0.9);
+  pointer-events: none;
+  /* a warm brown glow, then the dark, then the dark room; the element is blurred a little so the rim is frosted, with no line
+     where the panel stops. The falloff lies in the margin (--edge-m plus --edge-f) that the film leaves clear. */
+  box-shadow:
+    inset 0 0 calc(var(--edge-f) * 0.9) calc(var(--edge-f) * 0.05) rgba(84, 52, 24, .5),
+    inset 0 0 calc(var(--edge-f) * 0.95) calc(var(--edge-f) * 0.1) rgba(20, 12, 6, .85),
+    0 0 0 100px var(--lb-dark);
+  filter: blur(clamp(5px, 0.9vw, 11px));
+}
+.lb-dust { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; mix-blend-mode: multiply; }
 .lb-glow { mix-blend-mode: color-dodge; }
 .lb-cell:first-child {                    /* leader before the first frame */
   height: calc(var(--pt) + var(--pitch) + var(--ext));
@@ -274,115 +297,16 @@
   pointer-events: none;
 }
 
-/* "Sliders" nav bar: slim bar along the top, the controls drop down from it */
-.lb-has-nav .lb-stage { margin-top: calc(48px + env(safe-area-inset-top, 0px)); }
-.lb-nav {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 5;
-  font: 500 11px/1 ui-monospace, "SF Mono", Menlo, monospace;
-  letter-spacing: .2em;
-  text-transform: uppercase;
-  color: #5f5036;
+/* No bar. The buttons (socket-buttons/) are set into the top right corner of the panel, in the margin the film leaves clear, and
+   they scroll away with the page like everything else on it. Here is where the corner is, relative to the panel's lit area. */
+.lb-root {
+  --sb-top: calc(var(--edge-m) + var(--edge-f) + 6px - 14px);      /* just inside the fully lit part of the panel, above the film */
+  --sb-right: calc(var(--edge-m) + var(--edge-f) + 6px);
 }
-/* (installed on a phone, the bar also clears the notch and the rounded corners) */
-.lb-nav-bar {
-  display: flex;
-  align-items: stretch;
-  box-sizing: border-box;
-  height: calc(48px + env(safe-area-inset-top, 0px));
-  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) 0 env(safe-area-inset-left, 0px);
-  border-bottom: 1px solid rgba(60, 45, 20, .18);
-  background: color-mix(in srgb, var(--lb-bg) 82%, transparent);
-  -webkit-backdrop-filter: blur(10px);
-          backdrop-filter: blur(10px);
-}
-.lb-nav-toggle {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  box-sizing: border-box;
-  flex: 1;
-  padding: 0 clamp(16px, 3vw, 28px);
-  border: 0;
-  background: none;
-  font: inherit;
-  letter-spacing: inherit;
-  text-transform: inherit;
-  color: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-.lb-nav-organize {
-  align-self: center;
-  margin-right: clamp(16px, 3vw, 28px);
-  padding: 7px 14px;
-  border: 1px solid rgba(60, 45, 20, .35);
-  border-radius: 999px;
-  background: none;
-  font: inherit;
-  letter-spacing: inherit;
-  text-transform: inherit;
-  color: inherit;
-  cursor: pointer;
-  transition: background .15s ease, color .15s ease;
-}
-/* without the sliders (the live page) the bar holds only Organize, in plain sentence case */
-.lb-nav-min .lb-nav-bar { justify-content: flex-end; }
-.lb-nav-min .lb-nav-organize { text-transform: none; letter-spacing: .06em; font-size: 12px; }
-.lb-nav-organize:hover { background: #3a3024; color: var(--lb-bg); }
-/* The Organize button: a raised round push button. A dark wine-red rim, an ivory top and dark circular arrows. It sinks
-   a little when pressed. (These rules are more specific than the plain pill above, so they take over from it.) */
-.lb-nav-organize.lb-nav-icon {
-  position: relative;
-  display: block;
-  width: 40px;
-  height: 40px;
-  padding: 0;
-  border: 0;
-  border-radius: 50%;
-  color: #1e1916;
-  background: linear-gradient(145deg, #94424d 0%, #6b202c 42%, #320c15 100%);
-  box-shadow:
-    0 3px 7px rgba(62, 14, 24, .38),
-    0 1px 1.5px rgba(62, 14, 24, .52),
-    inset 0 1px 1px rgba(255, 205, 212, .45),
-    inset 0 -2px 3px rgba(34, 6, 12, .55);
-  transition: box-shadow .09s ease;
-}
-.lb-nav-organize.lb-nav-icon::before {                    /* the ivory top of the button */
-  content: "";
-  position: absolute;
-  inset: 5px;
-  border-radius: 50%;
-  background: linear-gradient(158deg, #faf6ec 0%, #e6dfd0 55%, #cdc4b1 100%);
-  box-shadow: 0 1.5px 2.5px rgba(34, 20, 10, .5), inset 0 1px 1px rgba(255, 255, 255, .95);
-  transition: transform .09s ease, box-shadow .09s ease;
-}
-.lb-nav-organize.lb-nav-icon svg { position: absolute; inset: 11px; width: 18px; height: 18px; transition: transform .09s ease; }
-.lb-nav-organize.lb-nav-icon .arc { fill: none; stroke: currentColor; stroke-width: 2.5; stroke-linecap: butt; }
-.lb-nav-organize.lb-nav-icon .hd { fill: currentColor; stroke: none; }
-.lb-nav-organize.lb-nav-icon:hover { background: linear-gradient(145deg, #a24e59 0%, #78283a 42%, #3a1019 100%); color: #1e1916; }
-.lb-nav-organize.lb-nav-icon:active {
-  transform: none;
-  box-shadow: 0 1px 2px rgba(62, 14, 24, .52), inset 0 1px 2px rgba(34, 6, 12, .65), inset 0 -1px 1px rgba(255, 205, 212, .24);
-}
-.lb-nav-organize.lb-nav-icon:active::before { transform: translateY(1.5px) scale(.965); box-shadow: 0 .5px 1px rgba(34, 20, 10, .5), inset 0 2px 3px rgba(60, 40, 20, .35); }
-.lb-nav-organize.lb-nav-icon:active svg { transform: translateY(1.5px) scale(.965); }
-.lb-nav-organize.lb-nav-icon:focus-visible { outline: 2px solid #2a2622; outline-offset: 3px; }
-.lb-nav-organize:active { transform: translateY(1px); }
-.lb-nav-toggle:hover { color: #2a2218; }
-.lb-nav-toggle svg {
-  width: 10px;
-  height: 6px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.4;
-  transition: transform .2s ease;
-}
-.lb-nav.is-open .lb-nav-toggle svg { transform: rotate(180deg); }
+/* the buttons lie on the panel itself: under the film, the dust and the glass */
+.lb-stage > .sb-corner { z-index: -1; }
+/* the sliders panel's holder: it only anchors the panel, which floats */
+.lb-nav { position: absolute; top: 0; right: 0; width: 0; height: 0; z-index: 5; font: 500 11px/1 ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: .2em; text-transform: uppercase; color: #5f5036; }
 
 /* film strips can be picked up and moved */
 .lb-root.lb-over-film { cursor: grab; }
@@ -393,11 +317,13 @@
   flex-direction: column;
   gap: 14px;
   box-sizing: border-box;
-  width: min(470px, 100%);
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  width: min(470px, calc(100% - 24px));
   padding: 16px clamp(16px, 3vw, 28px) 18px;
   border: 1px solid rgba(60, 45, 20, .18);
-  border-top: 0;
-  border-radius: 0 0 14px 0;
+  border-radius: 14px;
   background: color-mix(in srgb, var(--lb-bg) 88%, transparent);
   -webkit-backdrop-filter: blur(14px);
           backdrop-filter: blur(14px);
@@ -405,7 +331,7 @@
 }
 .lb-nav-panel[hidden] { display: none; }
 /* the sliders are grouped under small headings; the panel scrolls if it is taller than the window */
-.lb-nav-panel { max-height: calc(100vh - 64px); overflow-y: auto; overscroll-behavior: contain; }
+.lb-nav-panel { max-height: calc(100vh - 140px); overflow-y: auto; overscroll-behavior: contain; }
 .lb-nav-group {
   margin-top: 6px;
   padding-top: 10px;
@@ -421,6 +347,6 @@
 .lb-nav-panel input[type="range"] { flex: 1; min-width: 0; accent-color: #2a2622; cursor: pointer; }
 
 @media (prefers-reduced-motion: reduce) {
-  .lb-ring, .lb-refract, .lb-nav-toggle svg { transition: none; }
+  .lb-ring, .lb-refract { transition: none; }
   .lb-img img { transition: none; }
 }

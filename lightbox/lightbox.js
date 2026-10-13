@@ -11,9 +11,11 @@
 import { createSounds, DEFAULT_VOLUMES, GLASS_DRAG_ENABLED } from "./sounds.js";
 import { buildDial, buildTrim, setDialLight, DEG_PER_ZOOM, DETENTS, GLASS_RATIO, ZOOM_MAX, ZOOM_MIN } from "./dial.js";
 import { createGlass, createLens } from "./glass.js";
+import { createBleed, paintHoles } from "./bleed.js";
+import { createSocketButton, mountSocketCorner, setCovered, setPressed, ICONS } from "./socket-buttons/buttons.js";
 import { createSpecks } from "./dust.js";
 import { createFilm } from "./film.js";
-import { buildFilmFilter, createLensView, createNegView, paintGlowLayer, paintOverlay, parseColor, readScene, warmNegatives } from "./raster.js";
+import { bakeEdge, buildFilmFilter, createLensView, createNegView, paintGlowLayer, frameQuads, holeSpots, paintOverlay, parseColor, readScene, stripQuad, warmNegatives } from "./raster.js";
 
 const STRIP_DY = [0, 0.34, 0.12, 0.5, 0.05, 0.27];   // per-strip stagger, in frame widths
 const STRIP_ROT = [-0.3, 0.25, -0.15, 0.35, -0.25, 0.15]; // per-strip tilt, degrees
@@ -129,36 +131,30 @@ function buildEyepiece() {
   return { el, refract, ring, dial, glass, lens, mag };
 }
 
-/* A slim "Sliders" nav bar along the top; the sliders drop down from it, closed by default. */
+/* is a point inside a convex four-corner outline? */
+function insideQuad(q, x, y) {
+  for (let i = 0; i < 4; i++) {
+    const [ax, ay] = q[i], [bx, by] = q[(i + 1) % 4];
+    if ((bx - ax) * (y - ay) - (by - ay) * (x - ax) < 0) return false;
+  }
+  return true;
+}
+
+/* Two push buttons (socket-buttons/) in the panel's top right corner: reset, and (when `sliders` is on) the sliders, whose
+   panel drops down at the top left, closed by default. There is no bar. */
 function buildControls(rows, { onOrganize, onButton, sliders = true } = {}) {
   const nav = document.createElement("nav");
   nav.className = "lb-nav";
   nav.setAttribute("aria-label", "Sliders");
 
-  const toggle = document.createElement("button");
-  toggle.type = "button";
-  toggle.className = "lb-nav-toggle";
+  const toggle = createSocketButton({ icon: ICONS.sliders, label: "Sliders", onPress: onButton });
   toggle.setAttribute("aria-expanded", "false");
-  toggle.innerHTML = '<span>Sliders</span><svg viewBox="0 0 10 6" aria-hidden="true"><path d="M1 1l4 4 4-4"/></svg>';
-
-  const bar = div("lb-nav-bar");
-  const organize = document.createElement("button");
-  organize.type = "button";
-  organize.className = "lb-nav-organize lb-nav-icon";
-  // circular arrows, etched into the ivory: two arcs chasing each other round
-  organize.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><defs><filter id="lb-etch-btn" filterUnits="userSpaceOnUse" x="-2" y="-2" width="28" height="28" color-interpolation-filters="sRGB"><feOffset in="SourceAlpha" dx=".55" dy=".7" result="s"/><feComposite in="SourceAlpha" in2="s" operator="out" result="band"/><feGaussianBlur in="band" stdDeviation=".22" result="bandSoft"/><feFlood flood-color="#000" flood-opacity=".9"/><feComposite in2="bandSoft" operator="in" result="shadow"/><feComposite in="shadow" in2="SourceAlpha" operator="in" result="shadowIn"/><feOffset in="SourceAlpha" dx=".6" dy=".85" result="s2"/><feComposite in="s2" in2="SourceAlpha" operator="out" result="lipBand"/><feGaussianBlur in="lipBand" stdDeviation=".18" result="lipSoft"/><feFlood flood-color="#fffdf6" flood-opacity=".95"/><feComposite in2="lipSoft" operator="in" result="lip"/><feMerge><feMergeNode in="lip"/><feMergeNode in="SourceGraphic"/><feMergeNode in="shadowIn"/></feMerge></filter></defs><g filter="url(#lb-etch-btn)"><path class="arc" d="M5.47 8.96A7.2 7.2 0 0 1 17.09 6.91"/><path class="hd" d="M19.64 9.45L19.28 4.72L14.90 9.10Z"/><path class="arc" d="M18.53 15.04A7.2 7.2 0 0 1 6.91 17.09"/><path class="hd" d="M4.36 14.55L4.72 19.28L9.10 14.90Z"/></g></svg>';
-  organize.setAttribute("aria-label", "Organize: put the film back where it started");
-  organize.title = "Organize: put the film back where it started";
-  // a real push button: it clicks as it goes down, and again (more lightly) as it comes back up
-  organize.addEventListener("pointerdown", () => { onButton?.("down"); organize.dataset.sounded = "1"; });
-  organize.addEventListener("pointerup", () => onButton?.("up"));
-  organize.addEventListener("click", (e) => {
-    if (e.detail === 0 && !organize.dataset.sounded) { onButton?.("down"); setTimeout(() => onButton?.("up"), 70); }   // from the keyboard
-    delete organize.dataset.sounded;
-    onOrganize?.();
+  const organize = createSocketButton({
+    icon: ICONS.reset,
+    label: "Organize: put the film back where it started",
+    onPress: onButton,
+    onClick: () => onOrganize?.(),
   });
-  bar.append(...(sliders ? [toggle] : []), organize);
-  if (!sliders) nav.classList.add("lb-nav-min");     // just the Organize button, on the right
 
   const panel = div("lb-nav-panel");
   panel.id = `lb-sliders-${Math.random().toString(36).slice(2, 7)}`;
@@ -168,7 +164,7 @@ function buildControls(rows, { onOrganize, onButton, sliders = true } = {}) {
     const open = panel.hidden;
     panel.hidden = !open;
     toggle.setAttribute("aria-expanded", String(open));
-    nav.classList.toggle("is-open", open);
+    setPressed(toggle, open);
   });
 
   const setters = {};
@@ -194,15 +190,15 @@ function buildControls(rows, { onOrganize, onButton, sliders = true } = {}) {
     label.append(text, input, out);
     if (sliders) panel.append(label);
   }
-  nav.append(bar, ...(sliders ? [panel] : []));
-  return { wrap: nav, setters };
+  nav.append(...(sliders ? [panel] : []));
+  return { wrap: nav, corner: [...(sliders ? [toggle] : []), organize], setters };
 }
 
-export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFade = 0.85, volumes = {}, outerGlass = {}, filmDrag = 1, filmFlutter = 1, stacking = 1, panelFalloff = 1, panelGlow = 1, panelGrain = 1, lightBleed = 1, size, controls = true, sliders = true } = {}) {
+export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFade = 0.85, volumes = {}, outerGlass = {}, filmDrag = 1, filmFlutter = 1, stacking = 1, panelFalloff = 1.25, panelGlow = 1, panelGrain = 1, lightBleed = 1, lightSeep = 1.6, seepSpread = 10, size, controls = true, sliders = true } = {}) {
   root.classList.add("lb-root");
   const stage = div("lb-stage");
   root.replaceChildren(stage);
-  root.append(buildFilmFilter("lb-film-alpha", parseColor(getComputedStyle(root).getPropertyValue("--lb-bg").trim() || "#ddd0b6")));
+  root.append(buildFilmFilter("lb-film-alpha", parseColor(getComputedStyle(root).getPropertyValue("--lb-bg").trim() || "#eadec6")));
 
   // the outer glass (PA): 0 = a dome, 1 = a frustum widest at its base (see glass.js)
   const pa = { shape: 1, slope: 60, wall: 1, index: 1.49, dispersion: 0, reflect: 0.5, lip: 6, lipK: 1, cast: 1, ringShade: 0.6, ringShadeOff: 1, squig: 0.8, ...outerGlass };
@@ -213,7 +209,20 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
   overlayEl.className = "lb-overlay";
   const glowEl = document.createElement("canvas");
   glowEl.className = "lb-glow";
+  const seepFx = createBleed();             // light from open board spilling onto the edges of the film (see bleed.js)
+  const seepEl = seepFx.canvas;
+  seepEl.className = "lb-seep";
+  const edgeEl = div("lb-edge");                       // the dark room around the lit panel, and the panel's light falling off at its rim
+  const dustEl = document.createElement("canvas");    // dust on the board and film borders (kept off the photographs)
+  dustEl.className = "lb-dust";
+  let dustKey = "";
+  const holesEl = document.createElement("canvas");   // the lit sprocket holes, drawn sharp at the screen's own pixel density
+  holesEl.className = "lb-seep";
+  let holesKey = "";
+  let seep = lightSeep, spread = seepSpread;
   let specks = null;
+  let edgeSize = { m: 14, f: 40 };          // the dark margin and the light's falloff inside the panel's rim (see the stylesheet)
+  let cornerEl = null, cornerButtons = [];   // the push buttons, which lie on the panel under the film
   let grain = panelGrain;
   let falloff = panelFalloff;
   let glow = panelGlow;
@@ -273,7 +282,71 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     goal.y = Math.max(0, Math.min(stage.offsetHeight, goal.y));
   };
 
+  // light seeping onto the film: the soft spill from the open board, and the lit sprocket holes
+  function paintSeep() {
+    const sc = sceneRef;
+    const quads = sc.strips.map(stripQuad);
+    seepFx.update(sc.W, sc.H, quads, spread, seep);
+    const holes = holeSpots(sc.strips);
+    sc.holes = holes; sc.holeQuads = quads; sc.seepSpread = spread; sc.seepStrength = seep;
+    const key = [sc.W, sc.H, spread, seep, ...holes.map((h) => `${Math.round(h.x)},${Math.round(h.y)},${h.k}`)].join("|");
+    if (key === holesKey) return;
+    holesKey = key;
+    const dpr = overlayDpr();
+    if (holesEl.width !== Math.round(sc.W * dpr) || holesEl.height !== Math.round(sc.H * dpr)) {
+      holesEl.width = Math.round(sc.W * dpr); holesEl.height = Math.round(sc.H * dpr);
+    }
+    const c = holesEl.getContext("2d");
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.clearRect(0, 0, holesEl.width, holesEl.height);
+    c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    paintHoles(c, holes, quads, spread, seep);
+  }
+
+  // The buttons lie on the panel, so film can slide over them; a button with film over any part of it cannot be pressed (a
+  // press there takes hold of the film instead).
+  function updateCovered() {
+    if (!cornerButtons.length) return;
+    const origin = stage.getBoundingClientRect();
+    const quads = sceneRef.strips.map(stripQuad);
+    const shown = [];
+    for (const b of cornerButtons) {
+      const r = b.getBoundingClientRect();
+      const cx = r.left - origin.left + r.width / 2, cy = r.top - origin.top + r.height / 2, rad = r.width / 2;
+      let covered = false;
+      for (let k = 0; k < 9 && !covered; k++) {                 // the centre and eight points round its edge
+        const a = (k - 1) * (Math.PI / 4), px = k ? cx + Math.cos(a) * rad : cx, py = k ? cy + Math.sin(a) * rad : cy;
+        covered = quads.some((q) => insideQuad(q, px, py));
+      }
+      setCovered(b, covered);
+      shown.push({ x: cx, y: cy, size: r.width, icon: b.dataset.icon });
+    }
+    sceneRef.buttons = shown;       // the glasses draw them too, under the film
+  }
+
+  // The dust lies on the panel, so it stays put while the film slides over it; it is drawn again whenever a photograph
+  // moves, leaving each photograph clean.
+  function paintDust() {
+    const sc = sceneRef;
+    if (!specks || !sc) return;
+    const frames = sc.strips.flatMap(frameQuads);
+    sc.frames = frames;
+    const key = sc.W + "|" + sc.H + "|" + frames.map((q) => `${Math.round(q[0][0])},${Math.round(q[0][1])},${Math.round(q[2][0])},${Math.round(q[2][1])}`).join("|");
+    if (key === dustKey) return;
+    dustKey = key;
+    const dpr = overlayDpr();
+    if (dustEl.width !== Math.round(sc.W * dpr) || dustEl.height !== Math.round(sc.H * dpr)) {
+      dustEl.width = Math.round(sc.W * dpr); dustEl.height = Math.round(sc.H * dpr);
+    }
+    const c = dustEl.getContext("2d");
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.clearRect(0, 0, dustEl.width, dustEl.height);
+    c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    specks.draw(c, null, frames);
+  }
+
   const render = () => {
+    if (sceneRef) { paintSeep(); paintDust(); updateCovered(); }
     const L = smooth(lift) * liftHeight;
     loupe.el.style.transform = `translate(${cur.x - Do / 2}px, ${cur.y - Do / 2}px) scale(${(1 + LIFT_SCALE * L).toFixed(4)})`;
     loupe.el.style.setProperty("--lift", L.toFixed(3));
@@ -390,7 +463,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     }
     const c = overlayEl.getContext("2d");
     c.setTransform(dpr, 0, 0, dpr, 0, 0);
-    paintOverlay(c, W, H, { fall: falloff, grain, specks });
+    paintOverlay(c, W, H, { fall: falloff, grain });
   }
   const drawGlow = () => paintGlowLayer(glowEl, stage.clientWidth, stage.offsetHeight, glow);
   // sliders can fire many times a frame; repaint the overlay at most once per frame
@@ -399,8 +472,13 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
 
   let lastWidth = 0;
   function layout() {
-    const pad = Math.max(20, Math.min(56, root.clientWidth * 0.04));
+    // The film starts only where the light panel is at full brightness: past the dark margin and the soft falloff of its rim
+    // (the sizes below match --edge-m and --edge-f in the stylesheet).
+    const edgeM = Math.max(8, Math.min(20, root.clientWidth * 0.014)), edgeF = Math.max(26, Math.min(58, root.clientWidth * 0.04));
+    edgeSize = { m: edgeM, f: edgeF };
+    const pad = Math.round(edgeM + edgeF + 8);
     stage.style.setProperty("--pad", `${pad}px`);
+    stage.style.setProperty("--pad-top", `${pad + 52}px`);       // room above the film for the buttons, in the lit part of the panel
     const inner = stage.clientWidth - pad * 2;
     lastWidth = root.clientWidth;
     const cols = columnsFor(inner);
@@ -431,7 +509,9 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
       buildSheet(photos, fw, "lb-neg"),
       ...(glass && lens ? [buildSheet(photos, fw, "lb-ghost"), buildSheet(photos, fw, "lb-mult")] : []),
     );
-    stage.replaceChildren(filmLayer, overlayEl, glowEl, loupe.el);
+    stage.replaceChildren(...(cornerEl ? [cornerEl] : []), filmLayer, seepEl, holesEl, overlayEl, dustEl, glowEl, edgeEl, loupe.el);
+    holesKey = "";
+    dustKey = "";
     specks = createSpecks(stage.clientWidth, stage.offsetHeight);
     drawOverlay();
     drawGlow();
@@ -462,6 +542,8 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
           root.dataset.quality = String(Q_LEVELS[qLevel]);
           scene.hiLoaded = () => { render(); };         // a sharper picture arrived: redraw the lens
           scene.specks = specks;
+          scene.seepCanvas = seepEl;
+          scene.edgeCanvas = bakeEdge(scene.W, scene.H, edgeSize.m, edgeSize.f, Math.max(5, Math.min(11, innerWidth * 0.009)));
           scene.stack = stacking_; scene.fall = falloff; scene.glow = glow; scene.grain = grain;
           film = createFilm(scene, filmCfg);
           sceneRef = scene;
@@ -527,6 +609,8 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
       { group: "Light box", key: "glow", name: "Panel glow", min: 0, max: 2, step: 0.05, value: panelGlow, onInput: (v) => { glow = v; drawGlow(); if (sceneRef) sceneRef.glow = v; render(); } },
       { group: "Light box", key: "grain", name: "Panel grain", min: 0, max: 2, step: 0.05, value: panelGrain, onInput: (v) => { grain = v; queueOverlay(); if (sceneRef) sceneRef.grain = v; render(); } },
       { group: "Light box", key: "bleed", name: "Light bleed", min: 0, max: 2, step: 0.05, value: lightBleed, onInput: (v) => { bleed = v; render(); } },
+      { group: "Light box", key: "seep", name: "Light seeping onto film", min: 0, max: 2, step: 0.05, value: lightSeep, onInput: (v) => { seep = v; render(); } },
+      { group: "Light box", key: "seepSpread", name: "Seep distance (px)", min: 8, max: 120, step: 1, value: seepSpread, onInput: (v) => { spread = v; render(); } },
       { group: "Film", key: "stacking", name: "Film stacking", min: 0, max: 1, step: 0.05, value: stacking, onInput: (v) => { stacking_ = v; if (sceneRef) sceneRef.stack = v; film?.setStack(v); render(); } },
       { group: "Film", key: "filmDrag", name: "Film drag", min: 0, max: 2, step: 0.05, value: filmDrag, onInput: (v) => { filmCfg.push = v; } },
       { group: "Film", key: "filmFlutter", name: "Film flutter", min: 0, max: 2, step: 0.05, value: filmFlutter, onInput: (v) => { filmCfg.flutter = v; } },
@@ -536,13 +620,15 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
       { group: "Sound · lifting", key: "vol_lift", name: "Lift", min: 0, max: 1, step: 0.05, value: vols.lift, onInput: (v) => sounds.setVolume("lift", v) },
       { group: "Sound · lifting", key: "vol_place", name: "Set-down", min: 0, max: 1, step: 0.05, value: vols.place, onInput: (v) => sounds.setVolume("place", v) },
       ...(GLASS_DRAG_ENABLED ? [{ group: "Sound · sliding", key: "vol_drag", name: "Glass drag", min: 0, max: 1, step: 0.05, value: vols.drag, onInput: (v) => sounds.setVolume("drag", v) }] : []),
-      { group: "Sound · sliding", key: "vol_slide", name: "Eyepiece slide", min: 0, max: 1, step: 0.05, value: vols.slide, onInput: (v) => sounds.setVolume("slide", v) },
+      { group: "Sound · sliding", key: "vol_slide", name: "Eyepiece slide", min: 0, max: 1, step: 0.01, value: vols.slide, onInput: (v) => sounds.setVolume("slide", v) },
       { group: "Sound · sliding", key: "vol_crackle", name: "Film crackle", min: 0, max: 1, step: 0.05, value: vols.crackle, onInput: (v) => sounds.setVolume("crackle", v) },
       { group: "Sound · interface", key: "vol_button", name: "Button click", min: 0, max: 1, step: 0.05, value: vols.button, onInput: (v) => sounds.setVolume("button", v) },
     ], { onOrganize: () => { film?.reset(); kick(); }, onButton: (phase) => { sounds.unlock(); sounds.button(phase); }, sliders });
     setters = c.setters;
-    root.classList.add("lb-has-nav");
     root.append(c.wrap);
+    cornerEl = mountSocketCorner(stage, c.corner);
+    stage.prepend(cornerEl);             // the buttons lie on the panel, under the film
+    cornerButtons = c.corner;
   }
 
   // drag
@@ -573,7 +659,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     return { x: vx * k, y: vy * k };
   };
   /* Scrolling by pushing against the edge of the window. While the eyepiece is being dragged, once its black ring (PB)
-     touches the top or bottom of the visible area (the top is the bottom of the controls bar), the page scrolls that
+     touches the top or bottom of the visible area (the top of the page), the page scrolls that
      way, faster the further the eyepiece is pushed past the edge. The eyepiece stays under the pointer, so the film
      slides past it. It stops at the ends of the page, and only a drag does it: a resting eyepiece never scrolls. */
   const EDGE_MIN = 2, EDGE_MAX = 16;          // px per frame at 60 fps: about 120 up to 960 px a second
@@ -584,7 +670,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     const dt = Math.min(50, edgeLast ? t - edgeLast : 16.7);
     edgeLast = t;
     const R = D / 2;
-    const topEdge = root.querySelector(".lb-nav-bar")?.getBoundingClientRect().bottom ?? 0;
+    const topEdge = 0;
     const y = goal.y + stage.getBoundingClientRect().top;                 // where the eyepiece is headed, in the window
     const intoTop = topEdge - (y - R);                                    // > 0 once the ring reaches the top edge
     const intoBottom = y + R - innerHeight;                               // > 0 once it reaches the bottom edge
@@ -737,7 +823,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     const b = stage.getBoundingClientRect();
     return { x: e.clientX - b.left, y: e.clientY - b.top };
   };
-  const onBoard = (e) => !e.target.closest(".lb-loupe, .lb-nav");
+  const onBoard = (e) => !e.target.closest(".lb-loupe, .lb-nav, .sb-button");
   function letGo() {
     if (!gripping) return;
     gripping = false;

@@ -14,6 +14,9 @@
  * Geometry is read back from the DOM, so it stays in step with lightbox.css.
  */
 
+import { paintHoles } from "./bleed.js";
+import { paintSocketButton } from "./socket-buttons/buttons.js";
+
 const ORANGE = [217 / 255, 132 / 255, 58 / 255]; // film-mask cast, matches .lb-neg .lb-img::after
 const ORANGE_MIX = 0.55;
 
@@ -52,6 +55,7 @@ const PANEL_LAYERS = [
  * and pure black stays black), which is what a brighter patch of panel does to the film in front of it.
  * `glow` scales them (0 = none). */
 const PANEL_GLOW = [
+  { cx: 0.5, cy: 0.5, rx: 1.2, ry: 1.2, color: "255,243,218", stops: [[0, 0.11], [1, 0.11]] },      // the whole panel burning brighter
   { cx: 0.34, cy: 0.34, rx: 0.34, ry: 0.42, color: "70,70,66", stops: [[0, 0.14], [1, 0]] },   // a brighter patch
   { cx: 0.72, cy: 0.58, rx: 0.38, ry: 0.46, color: "70,70,66", stops: [[0, 0.11], [1, 0]] },
   { cx: 0.5, cy: 0.95, rx: 0.5, ry: 0.22, color: "70,70,66", stops: [[0, 0.09], [1, 0]] },
@@ -192,7 +196,7 @@ function paintGrain(ctx, W, H, grain) {
  * them together onto ONE canvas instead of three separate full-size layers. That is a third of the memory for the
  * same picture, which is what a slower device runs out of first. The glow works differently (it brightens), so it
  * stays its own layer, but it is smooth, so it is drawn at a quarter of the resolution and stretched. */
-export function paintOverlay(ctx, W, H, { fall, grain, specks }) {
+export function paintOverlay(ctx, W, H, { fall, grain }) {
   ctx.save();
   ctx.globalCompositeOperation = "source-over";
   ctx.fillStyle = "#fff";
@@ -200,7 +204,42 @@ export function paintOverlay(ctx, W, H, { fall, grain, specks }) {
   if (fall > 0) { ctx.globalCompositeOperation = "multiply"; paintLayers(ctx, W, H, PANEL_LAYERS, () => PANEL_INK, fall); }
   ctx.restore();
   paintGrain(ctx, W, H, grain);
-  specks?.draw(ctx);
+}
+
+/* The dark room around the lit panel and the fall of its light toward the rim, baked once as a picture of the whole sheet, for the
+ * glasses to draw (the page draws the same thing with CSS, `.lb-edge`; keep the two in step). m: the dark margin, f: how far the
+ * light falls off inside the rim, blur: how frosted the rim is, all in css px. Drawn at half size: it is all soft. */
+export function bakeEdge(W, H, m, f, blur) {
+  const S = 0.5, P = 40;                                   // scale, and spare room round the picture so the blur has something to blur
+  const w = Math.ceil((W + 2 * P) * S), h = Math.ceil((H + 2 * P) * S);
+  const c = document.createElement("canvas");
+  c.width = w; c.height = h;
+  const g = c.getContext("2d");
+  g.scale(S, S);
+  g.translate(P, P);
+  const rr = (inset) => {                                  // the panel: its rounded rectangle, shrunk by `inset`
+    const x = m + inset, y = m + inset, ww = W - 2 * (m + inset), hh = H - 2 * (m + inset);
+    const r = Math.max(0, f * 0.9 - inset);
+    g.moveTo(x + r, y); g.arcTo(x + ww, y, x + ww, y + hh, r); g.arcTo(x + ww, y + hh, x, y + hh, r); g.arcTo(x, y + hh, x, y, r); g.arcTo(x, y, x + ww, y, r); g.closePath();
+  };
+  const big = () => g.rect(-P - 200, -P - 200, W + 2 * P + 400, H + 2 * P + 400);
+  // the dark room, outside the panel
+  g.beginPath(); big(); rr(0); g.fillStyle = "#120c08"; g.fill("evenodd");
+  // two inset glows inside the rim: a warm brown one, then a dark one
+  for (const [colour, blurK, spreadK] of [["rgba(84,52,24,.5)", 0.9, 0.05], ["rgba(20,12,6,.8)", 0.95, 0.1]]) {
+    g.save();
+    g.beginPath(); rr(0); g.clip();
+    g.shadowColor = colour; g.shadowBlur = f * blurK; g.shadowOffsetX = 0; g.shadowOffsetY = 0;
+    g.beginPath(); big(); rr(f * spreadK); g.fillStyle = colour; g.fill("evenodd");
+    g.restore();
+  }
+  // frost the whole rim, then cut away the spare room
+  const out = document.createElement("canvas");
+  out.width = Math.ceil(W * S); out.height = Math.ceil(H * S);
+  const o = out.getContext("2d");
+  o.filter = `blur(${blur * S}px)`;
+  o.drawImage(c, -P * S, -P * S);
+  return out;
 }
 
 export function paintGlowLayer(canvas, W, H, glow, scale = 0.25) {
@@ -241,6 +280,51 @@ export function buildFilmFilter(id, boardRgb = [221, 208, 182]) {
       values="${(255 / boardRgb[0]).toFixed(4)} 0 0 0 0  0 ${(255 / boardRgb[1]).toFixed(4)} 0 0 0  0 0 ${(255 / boardRgb[2]).toFixed(4)} 0 0  0 0 0 1 0"/>
   </filter></defs>`;
   return svg;
+}
+
+/* the picture frames of every strip, as four-corner outlines in sheet px (the same transform as stripQuad) */
+export function frameQuads(s) {
+  const tx = s.left + s.w / 2 + s.ox, ty = s.top + s.oy;
+  const c = Math.cos(s.rot), n = Math.sin(s.rot);
+  return s.cells.map((cell) => {
+    const x0 = cell.frame.x - s.w / 2 + cell.x, y0 = cell.top + cell.dy + cell.frame.y;
+    return [[x0, y0], [x0 + s.fw, y0], [x0 + s.fw, y0 + s.fh], [x0, y0 + s.fh]].map(([x, y]) => [tx + x * c - y * n, ty + x * n + y * c]);
+  });
+}
+
+/* A steady pseudo-random number in 0..1 from a few whole numbers: the same inputs always give the same answer, so
+ * anything chosen with it does not flicker or change when the page is redrawn. */
+const hash01 = (a, b, c) => {
+  let h = (Math.imul(a + 1, 374761393) ^ Math.imul(b + 1, 668265263) ^ Math.imul(c + 1, 2147483647)) >>> 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177) >>> 0;
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+};
+
+/* The sprocket holes of every strip that the light box shines through brightly: for each strip (index si), a row of
+ * holes down each side makes one "set" per frame and side (the four holes beside one picture). A light box is not
+ * perfectly even, so only some sets glow, each by a different amount. Each hole is {x, y, rx, ry, k} in sheet px:
+ * its centre, its half-size, the strip's tilt, which strip it is in and how brightly it lets light through. */
+export function holeSpots(strips) {
+  const out = [];
+  strips.forEach((s, si) => {
+    const tx = s.left + s.w / 2 + s.ox, ty = s.top + s.oy;
+    const cs = Math.cos(s.rot), sn = Math.sin(s.rot);
+    for (const c of s.cells) {
+      for (let side = 0; side < 2; side++) {
+        const r = hash01(si, c.index, side);
+        if (r > 0.5) continue;                                   // about half of the sets stay dim
+        const k = 0.35 + 0.65 * (r / 0.5);                       // the others glow by different amounts
+        const lx = (side ? s.w - s.b + 0.63 * s.b : 0.37 * s.b) + c.x - s.w / 2;
+        const tile0 = c.index === 0 ? s.pt : 0;
+        for (let y = tile0 - Math.ceil(tile0 / s.hp) * s.hp; y < c.h; y += s.hp) {
+          const ly = c.top + c.dy + y + 0.5 * s.hp;
+          if (ly < c.top || ly > c.top + c.h - 6) continue;      // a hole belongs to the cell it starts in
+          out.push({ x: tx + lx * cs - ly * sn, y: ty + lx * sn + ly * cs, rx: 0.23 * s.b, ry: 0.24 * s.hp, rot: s.rot, si, k });
+        }
+      }
+    }
+  });
+  return out;
 }
 
 /* a strip's four corners in sheet px, clockwise: top-left, top-right, bottom-right, bottom-left */
@@ -405,7 +489,7 @@ export async function readScene(stage, root) {
   });
   const scene = {
     W: stage.clientWidth, H: stage.offsetHeight, strips,
-    bg: css("--lb-bg", "#ddd0b6"), lit: css("--lb-lit", "#fff7e2"),
+    bg: css("--lb-bg", "#eadec6"), lit: css("--lb-lit", "#fcf2dc"),
     film: css("--lb-film", "#1b1917"), ink: css("--lb-edge-ink", "#d89a4c"),
     stack: 1,     // 0 = film blends by transparency, 1 = stacked film multiplies the light
     fall: 1,      // panel falloff
@@ -483,7 +567,12 @@ function drawMultPhoto(ctx, scene, f, s, mode, norm) {
 function drawCell(ctx, scene, s, c, mode, variant = "opaque") {
   const translucent = variant === "alpha";
   const norm = variant === "mult" ? scene.norm[mode] : null;
-  // film base with see-through sprocket holes
+  // film base with see-through sprocket holes. The hole at either end of a cell can reach past the cell; clip to the cell so
+  // the part outside is not filled in (with the even-odd rule it would show up as dark rounded patches beside the strip).
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, 0, s.w, c.h);
+  ctx.clip();
   ctx.beginPath();
   ctx.rect(0, 0, s.w, c.h);
   const tile0 = c.index === 0 ? s.pt : 0;          // where the hole pattern starts in this cell
@@ -495,6 +584,7 @@ function drawCell(ctx, scene, s, c, mode, variant = "opaque") {
   const outer = ctx.globalAlpha;
   if (translucent) ctx.globalAlpha = outer * (mode === "pos" ? BASE_ALPHA_POS : BASE_ALPHA);
   ctx.fill("evenodd");
+  ctx.restore();
   ctx.globalAlpha = outer;
 
   const f = c.frame;
@@ -640,12 +730,31 @@ function createWindowView(scene, dpr, { mode, bg }) {
       scene.drawScale = k;                                 // lets the photo drawing pick a thumbnail or the sharper picture
       ctx.setTransform(k, 0, 0, k, (canvas.width - k * 2 * cx) / 2, (canvas.height - k * 2 * cy) / 2);
       const half = size / 2 / scale;
+      for (const btn of scene.buttons ?? []) paintSocketButton(ctx, btn);      // the push buttons lie on the panel, under the film
       drawScene(ctx, scene, { mode, view: { x0: cx - half, y0: cy - half, x1: cx + half, y1: cy + half } });
-      scene.specks?.draw(ctx, { x0: cx - half, y0: cy - half, x1: cx + half, y1: cy + half });   // dust lying on the panel
+      scene.specks?.draw(ctx, { x0: cx - half, y0: cy - half, x1: cx + half, y1: cy + half }, scene.frames);   // dust lying on the panel
+      // Through the eyepiece the photographs must be seen as they are: none of the panel's own effects (light spilling onto the film,
+      // its tint and glow, the fall of its light, its rim) may touch them. So in the lens they are applied everywhere except
+      // over the picture frames.
+      if (mode === "pos" && scene.frames?.length) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(cx - half - 4, cy - half - 4, 2 * half + 8, 2 * half + 8);
+        for (const q of scene.frames) { q.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.closePath(); }
+        ctx.clip("evenodd");
+      }
+      if (scene.seepCanvas && scene.seepCanvas.width > 2) {     // light from the open board spilling onto the film's edges
+        ctx.globalCompositeOperation = "screen";
+        ctx.drawImage(scene.seepCanvas, 0, 0, scene.W, scene.H);
+        if (scene.holes?.length) paintHoles(ctx, scene.holes, scene.holeQuads, scene.seepSpread, scene.seepStrength, { x0: cx - half, y0: cy - half, x1: cx + half, y1: cy + half });
+        ctx.globalCompositeOperation = "source-over";
+      }
       paintPanel(ctx, scene);      // the light box itself is brighter in the middle
       // ...and its surface is matte, not smooth. The grain belongs to the panel, so it is left out of the lens:
       // the photo seen through the eyepiece must not pick up any extra grain.
       if (mode !== "pos") paintGrain(ctx, scene.W, scene.H, scene.grain);
+      if (scene.edgeCanvas) ctx.drawImage(scene.edgeCanvas, 0, 0, scene.W, scene.H);      // the dark room and the panel's rim, seen through the glass too
+      if (mode === "pos" && scene.frames?.length) ctx.restore();
     },
   };
 }

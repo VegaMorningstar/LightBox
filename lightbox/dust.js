@@ -5,8 +5,11 @@
  * and through clear film, and vanish on the dark film base, as real dust would.
  *
  * Everything is in sheet pixels, the same space as the film, so the page and both glasses can draw it:
- *   specks.draw(ctx, view)   draws it at the context's current transform (it magnifies in the lens, staying crisp);
- *                            with a `view` ({x0, y0, x1, y1}) it skips the specks that are outside it
+ *   specks.draw(ctx, view, frames)
+ *                            draws it at the context's current transform (it magnifies in the lens, staying crisp);
+ *                            with a `view` ({x0, y0, x1, y1}) it skips the specks that are outside it, and with `frames`
+ *                            (outlines of the photographs, four corners each) it leaves the photographs clean: dust
+ *                            shows on the board and the film border, not on the pictures
  */
 
 const DUST_INK = "36,27,17";
@@ -44,12 +47,26 @@ export function createSpecks(W, H, { seed = 7 } = {}) {
 
   return {
     dust,
-    draw(ctx, view) {
+    draw(ctx, view, frames) {
+      // each photo as a bounding box plus its four corners, so most specks are cleared with one cheap comparison
+      const boxes = (frames ?? []).map((q) => ({
+        q, x0: Math.min(q[0][0], q[1][0], q[2][0], q[3][0]), x1: Math.max(q[0][0], q[1][0], q[2][0], q[3][0]),
+        y0: Math.min(q[0][1], q[1][1], q[2][1], q[3][1]), y1: Math.max(q[0][1], q[1][1], q[2][1], q[3][1]),
+      }));
+      const onPhoto = (x, y) => boxes.some((b) => {
+        if (x < b.x0 || x > b.x1 || y < b.y0 || y > b.y1) return false;
+        for (let i = 0; i < 4; i++) {                                // inside a convex outline: on the same side of every edge
+          const [ax, ay] = b.q[i], [bx, by] = b.q[(i + 1) % 4];
+          if ((bx - ax) * (y - ay) - (by - ay) * (x - ax) < 0) return false;
+        }
+        return true;
+      });
       ctx.save();
       ctx.globalCompositeOperation = "multiply";
       ctx.lineCap = "round";
       for (const d of dust) {
         if (view && (d.x < view.x0 - 14 || d.x > view.x1 + 14 || d.y < view.y0 - 14 || d.y > view.y1 + 14)) continue;   // not in this window
+        if (boxes.length && onPhoto(d.x, d.y)) continue;
         if (d.fibre) {
           ctx.strokeStyle = `rgba(${DUST_INK},${d.alpha})`;
           ctx.lineWidth = d.w;

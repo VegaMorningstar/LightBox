@@ -1,0 +1,86 @@
+/* socket-buttons: round push buttons set into a surface, like fittings in a light box's panel.
+ *
+ * A dark rim, a frosted ivory top with an etched icon, and a narrow socket cut into the surface around it: a lit lip on the
+ * lower right, a shaded one on the upper left (light from the upper left), with fine matte grain on the lit lip. Pressing does not
+ * slide the top down: it goes into the surface (it shrinks toward its centre and dims). A button with aria-pressed="true" stays
+ * pressed in.
+ *
+ * Theme it with these variables, set on the button or on any ancestor:
+ *   --sb-size   diameter (default 38px)      --sb-gap    space between buttons in a corner (12px)
+ *   --sb-top, --sb-right   where a corner of buttons sits in its (positioned) container
+ *   --sb-ink    colour of the etched icon (#1e1916)
+ */
+
+.sb-corner {
+  position: absolute;
+  top: var(--sb-top, 12px);
+  right: var(--sb-right, 12px);
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: var(--sb-gap, 12px);
+}
+
+.sb-button {
+  --size: var(--sb-size, 38px);
+  position: relative;
+  display: block;
+  flex: none;
+  width: var(--size);
+  height: var(--size);
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: var(--sb-ink, #1e1916);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  background: linear-gradient(145deg, #5a4636 0%, #33271c 45%, #17110b 100%);
+  /* Set into the panel, not lying on it: a narrow dark gap all round (the socket it sits in), its far lip catching the light on the
+     lower right, and the near lip in shade on the upper left. The rim itself is dark on the shaded side and lit on the other. */
+  --socket:
+    0 0 0 2px rgba(58, 40, 22, .5),
+    1.2px 1.8px 1.4px 2.2px rgba(255, 252, 240, .9),
+    -.8px -1px 2px 2.2px rgba(70, 48, 26, .3),
+    2px 3px 5px 2px rgba(60, 40, 20, .16);
+  box-shadow:
+    var(--socket),
+    inset 1px 1.2px 1.5px rgba(10, 6, 2, .6),
+    inset -.8px -1px 1px rgba(255, 225, 190, .3);
+  transition: box-shadow .09s ease;
+}
+.sb-button::before {                    /* the frosted ivory top of the button */
+  content: "";
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .55 0 0 0 0 .47 0 0 0 0 .36 0 0 0 .5 -.12'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"),
+    radial-gradient(circle at 36% 30%, rgba(255, 255, 255, .35), rgba(255, 255, 255, 0) 68%),
+    linear-gradient(158deg, #e9e2d2 0%, #d9d0bc 60%, #c8bda6 100%);
+  box-shadow: 0 .8px 1.5px rgba(10, 6, 2, .45), inset 1px 1.2px 2px rgba(90, 64, 36, .28), inset -1px -1px 2px rgba(255, 255, 255, .45);
+  transition: transform .09s ease, box-shadow .09s ease, filter .09s ease;
+}
+.sb-button::after {                     /* the frosting on the lit lip: the panel's own fine matte grain, only where the light catches it */
+  content: "";
+  position: absolute;
+  inset: -5px;
+  border-radius: 50%;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='70' height='70'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.1' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .62 0 0 0 0 .52 0 0 0 0 .4 0 0 0 1.4 -.5'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  -webkit-mask-image: radial-gradient(circle, transparent 66%, #000 74%, #000 88%, transparent 100%), linear-gradient(135deg, transparent 38%, #000 82%);
+          mask-image: radial-gradient(circle, transparent 66%, #000 74%, #000 88%, transparent 100%), linear-gradient(135deg, transparent 38%, #000 82%);
+  -webkit-mask-composite: source-in;
+          mask-composite: intersect;
+}
+.sb-button svg { position: absolute; inset: 0; margin: auto; width: 47%; height: 47%; transition: transform .09s ease; }
+.sb-button .arc { fill: none; stroke: currentColor; stroke-width: 2.5; stroke-linecap: butt; }
+.sb-button .hd { fill: currentColor; stroke: none; }
+.sb-button:hover { background: linear-gradient(145deg, #66503e 0%, #3a2c20 45%, #1b140d 100%); }
+.sb-button:active, .sb-button[aria-pressed="true"] {
+  box-shadow: var(--socket), inset 1.5px 2px 2.5px rgba(10, 6, 2, .75), inset -.6px -.8px 1px rgba(255, 220, 180, .2);
+}
+/* pressed: the top does not slide down, it goes into the panel: it shrinks toward its centre, deeper into its socket, and dims */
+.sb-button:active::before, .sb-button[aria-pressed="true"]::before { transform: scale(.88); filter: brightness(.93); box-shadow: 0 .5px 1px rgba(34, 20, 10, .5), inset 1.5px 2px 3px rgba(60, 40, 20, .4); }
+.sb-button:active svg, .sb-button[aria-pressed="true"] svg { transform: scale(.88); }
+.sb-button[data-covered] { pointer-events: none; }
+.sb-button:focus-visible { outline: 2px solid #2a2622; outline-offset: 3px; }

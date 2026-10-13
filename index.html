@@ -22,30 +22,24 @@
   <link rel="modulepreload" href="lightbox/raster.js">
   <link rel="modulepreload" href="lightbox/film.js">
   <link rel="modulepreload" href="lightbox/glass.js">
+  <link rel="modulepreload" href="lightbox/bleed.js">
+  <link rel="modulepreload" href="lightbox/socket-buttons/buttons.js">
   <link rel="modulepreload" href="lightbox/dial.js">
   <link rel="modulepreload" href="lightbox/sounds.js">
   <link rel="modulepreload" href="lightbox/dust.js">
   <link rel="preload" href="photos.json" as="fetch" crossorigin>
   <link rel="stylesheet" href="lightbox/lightbox.css">
+  <link rel="stylesheet" href="lightbox/socket-buttons/buttons.css">
   <style>
-    html, body { margin: 0; background: #ddd0b6; }
+    html, body { margin: 0; background: #120c08; }
     body { min-height: 100vh; }
     .lb-root { min-height: 100vh; }
-    .hint {
-      position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom)); transform: translateX(-50%);
-      font: 500 11px/1 ui-monospace, "SF Mono", Menlo, monospace;
-      letter-spacing: .22em; text-transform: uppercase;
-      color: #7a6a4c; pointer-events: none; z-index: 2;
-    }
-    /* on a phone the hint would wrap over the film */
-    @media (max-width: 640px) { .hint { display: none; } }
     noscript p { margin: 0; padding: 40px 20px; text-align: center; font: 15px/1.5 -apple-system, "Helvetica Neue", sans-serif; color: #6b5b3d; }
   </style>
 </head>
 <body>
   <main id="sheet" aria-label="Photo contact sheet"></main>
   <noscript><p>LightBox needs JavaScript to run.</p></noscript>
-  <div class="hint">drag to slide · double-press the ring to turn · double-press the glass to lift</div>
   <script type="module">
     import { mountLightBox } from "./lightbox/lightbox.js";
     try {
@@ -69,23 +63,6 @@
       // (this script waits on the photo list first, so the page may already have finished loading)
       if (document.readyState === "complete") register(); else addEventListener("load", register);
     }
-
-    // An Install button beside Organize, when the browser says the app can be installed (and it is not already).
-    let installPrompt = null;
-    const installButton = () => document.querySelector(".lb-nav-install");
-    addEventListener("beforeinstallprompt", (e) => {
-      e.preventDefault();
-      installPrompt = e;
-      const bar = document.querySelector(".lb-nav-bar");
-      if (!bar || installButton()) return;
-      const b = document.createElement("button");
-      b.type = "button";
-      b.className = "lb-nav-organize lb-nav-install";
-      b.textContent = "Install";
-      b.addEventListener("click", async () => { installPrompt?.prompt(); await installPrompt?.userChoice; installPrompt = null; b.remove(); });
-      bar.append(b);                                  // after Organize, which stays first
-    });
-    addEventListener("appinstalled", () => { installPrompt = null; installButton()?.remove(); });
   </script>
 </body>
 </html>

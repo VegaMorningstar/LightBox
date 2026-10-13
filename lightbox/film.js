@@ -7,6 +7,9 @@
  *    the pull fades in up to V1. A strip under the eyepiece is dragged a little along with it, then
  *    stops again (board friction), and each frame-sized piece of it leans a hair against its
  *    neighbours, bending the strip into a soft S-curve that eases in and settles without wobbling.
+ *    The drag acts where the eyepiece is, as a hand would, so it works like a grab (below): over the
+ *    top of a strip the top swings across while the bottom barely moves, over the middle the whole
+ *    strip slides, over the bottom it is the other way round.
  *
  * 2. You grab a strip. Each strip is a rigid body lying on the board with friction. Pull it at one
  *    point and the sideways pull is shared between sliding the whole strip and turning it, depending
@@ -30,6 +33,9 @@ const PUSH = 0.0012;          // how strongly the eyepiece pulls a strip, per ms
 const BOARD = 0.012;          // board friction on a sliding strip, per ms
 const MAX_X = 0.14;           // furthest the eyepiece nudges a strip sideways, in frame widths
 const MAX_Y = 0.22;           // ...and along its length
+const NUDGE_END = 0.2;        // furthest an end of a strip is swung by the eyepiece, in frame widths (the turn is limited to match)
+const SPIN_RUB = 0.9;         // how stubbornly a strip resists being turned by the eyepiece (a light rub turns it more readily than a firm grab)
+const NUDGE_TURN = 0.06;      // ...and never more than this many radians
 
 const WN = (2 * Math.PI * 4) / 1000;   // stiffness of the bend, in rad per ms
 const ZETA = 0.75;                     // heavily damped: it eases back without overshooting or ringing
@@ -64,7 +70,7 @@ export function createFilm(scene, cfg = { push: 1, flutter: 1 }) {
   let moveSlide = 0;    // 0..1: a strip is sliding on the board (held, or gliding after a throw)
   let moveRub = 0;      // 0..1: a moving strip is also riding over another strip
   let zTop = 0;         // the strip last picked up sits on top
-  scene.strips.forEach((s) => { s.rot0 = s.rot; s.ax = 0; s.ay = 0; s.cvx = s.cvy = s.cw = 0; s.manual = false; s.z = 0; });
+  scene.strips.forEach((s) => { s.rot0 = s.rot; s.ax = 0; s.ay = 0; s.arot = s.rot; s.cvx = s.cvy = s.cw = 0; s.vw = 0; s.manual = false; s.z = 0; });
 
   // ---------- geometry ----------
 
@@ -135,14 +141,21 @@ export function createFilm(scene, cfg = { push: 1, flutter: 1 }) {
     return inside / total;
   }
 
+  /* where a strip rests when nothing is rubbing it: the eyepiece only ever nudges it a little way from here */
+  function anchorHere(s) {
+    s.ax = s.ox; s.ay = s.oy; s.arot = s.rot;
+    [s.acx, s.acy] = centreOf(s);
+  }
+  scene.strips.forEach(anchorHere);
+
   /* put a strip's centre at (cx, cy) and its angle at `rot`; refuse (and leave it as it was) if not allowed */
-  function place(s, cx, cy, rot) {
+  function place(s, cx, cy, rot, anchor = true) {
     const old = [s.ox, s.oy, s.rot];
     const dx = Math.sin(rot) * s.h / 2, dy = Math.cos(rot) * s.h / 2;
     s.rot = rot;
     s.ox = cx + dx - (s.left + s.w / 2);
     s.oy = cy - dy - s.top;
-    if (allowed(s)) { s.ax = s.ox; s.ay = s.oy; return true; }
+    if (allowed(s)) { if (anchor) anchorHere(s); return true; }
     [s.ox, s.oy, s.rot] = old;
     return false;
   }
@@ -289,26 +302,39 @@ export function createFilm(scene, cfg = { push: 1, flutter: 1 }) {
     const under = Math.min(1, w.reduce((a, b) => a + b, 0) * 0.8);
     contactNow = Math.max(contactNow, under * gate);
 
-    // the whole strip is pulled along by the eyepiece, and held back by the board
+    // The strip is pulled along by the eyepiece, and held back by the board. The pull acts at the point of the strip the eyepiece
+    // is over, like a hand would, and is shared between sliding the strip and turning it exactly as when you grab it: over the
+    // top the top swings, over the middle the whole strip slides, over the bottom the bottom swings.
     if (held && held.s === s) {
-      s.vx = s.vy = 0;
+      s.vx = s.vy = s.vw = 0;
     } else {
-      const pull = PUSH * gate * under * cfg.push;
-      s.vx += (pull * (eye.vx - s.vx) - BOARD * s.vx) * dt;
-      s.vy += (pull * (eye.vy - s.vy) - BOARD * s.vy) * dt;
-      const lx = MAX_X * s.fw, ly = MAX_Y * s.fw;
-      const wantX = s.ox + s.vx * dt, wantY = s.oy + s.vy * dt;
-      const nx = Math.max(s.ax - lx, Math.min(s.ax + lx, wantX));
-      const ny = Math.max(s.ay - ly, Math.min(s.ay + ly, wantY));
+      const [tx, ty] = topOf(s);
+      const [lx, ly] = rotate(-s.rot, eye.x - tx, eye.y - ty);
+      const gx = Math.max(-s.w / 2, Math.min(s.w / 2, lx)), gy = Math.max(0, Math.min(s.h, ly));
+      const [rx, ry] = rotate(s.rot, gx, gy - s.h / 2);          // from the strip's centre to the point being pulled
+      const J = (SPIN_RUB * s.h * s.h) / 12;
+      const vpx = s.vx - s.vw * ry, vpy = s.vy + s.vw * rx;      // how fast that point is moving now
+      const k = PUSH * gate * under * cfg.push;
+      const fx = k * (eye.vx - vpx), fy = k * (eye.vy - vpy);
+      s.vx += (fx - BOARD * s.vx) * dt;
+      s.vy += (fy - BOARD * s.vy) * dt;
+      s.vw += ((rx * fy - ry * fx) / J - BOARD * s.vw) * dt;
+      const [cx, cy] = centreOf(s);
+      const lxm = MAX_X * s.fw, lym = MAX_Y * s.fw;
+      const turnMax = Math.min(NUDGE_TURN, (NUDGE_END * s.fw) / (s.h / 2));
+      const wantX = cx + s.vx * dt, wantY = cy + s.vy * dt, wantR = s.rot + s.vw * dt;
+      const nx = Math.max(s.acx - lxm, Math.min(s.acx + lxm, wantX));
+      const ny = Math.max(s.acy - lym, Math.min(s.acy + lym, wantY));
+      const nr = Math.max(s.arot - turnMax, Math.min(s.arot + turnMax, wantR));
       if (nx !== wantX) s.vx = 0;
       if (ny !== wantY) s.vy = 0;
-      if (nx !== s.ox || ny !== s.oy) {                              // (a strip that is not moving cannot have run into anything)
-        const [ox, oy] = [s.ox, s.oy];
-        s.ox = nx; s.oy = ny;
-        if (!allowed(s)) { s.ox = ox; s.oy = oy; s.vx = s.vy = 0; }   // never slide over a neighbour
+      if (nr !== wantR) s.vw = 0;
+      if (nx !== cx || ny !== cy || nr !== s.rot) {                  // (a strip that is not moving cannot have run into anything)
+        if (!place(s, nx, ny, nr, false)) s.vx = s.vy = s.vw = 0;    // never slide over a neighbour
       }
       if (Math.abs(s.vx) < 0.0004) s.vx = 0;     // board friction holds it once it is nearly still
       if (Math.abs(s.vy) < 0.0004) s.vy = 0;
+      if (Math.abs(s.vw) < 0.0008 / s.h) s.vw = 0;
     }
 
     // a gentle lean of each piece against its neighbours: a damped spring chain
@@ -363,7 +389,7 @@ export function createFilm(scene, cfg = { push: 1, flutter: 1 }) {
       // Nothing touching the film, and the film at rest (the usual case while the eyepiece just glides about):
       // there is nothing to work out, so skip the physics for the frame.
       const stirring = gate > 0.001 || held !== null || tidying || scene.strips.some((s) =>
-        s.vx || s.vy || s.cvx || s.cvy || s.cw || s.cells.some((c) => Math.abs(c.ang) > 0.0002 || Math.abs(c.omega) > 0.00001));
+        s.vx || s.vy || s.vw || s.cvx || s.cvy || s.cw || s.cells.some((c) => Math.abs(c.ang) > 0.0002 || Math.abs(c.omega) > 0.00001));
       if (!stirring) {
         if (wasActive) { findOverlaps(); applyDom(); wasActive = false; }
         contact = 0; moveSlide = moveRub = 0;
@@ -399,11 +425,12 @@ export function createFilm(scene, cfg = { push: 1, flutter: 1 }) {
           const k = 1 - Math.exp(-dt / TIDY_MS);
           let left = 0;
           for (const s of scene.strips) {
-            s.cvx = s.cvy = s.cw = s.vx = s.vy = 0;
+            s.cvx = s.cvy = s.cw = s.vx = s.vy = s.vw = 0;
             s.ox += (0 - s.ox) * k; s.oy += (0 - s.oy) * k; s.rot += (s.rot0 - s.rot) * k;
-            s.ax = s.ox; s.ay = s.oy;
+            s.vw = 0;
             for (const c of s.cells) { c.ang *= 1 - k; c.omega = 0; }
             chain(s);
+            anchorHere(s);
             left = Math.max(left, Math.abs(s.ox), Math.abs(s.oy), Math.abs(s.rot - s.rot0) * s.h);
           }
           if (left < 0.1) {
@@ -412,6 +439,7 @@ export function createFilm(scene, cfg = { push: 1, flutter: 1 }) {
               s.rot = s.rot0;
               for (const c of s.cells) { c.ang = 0; c.omega = 0; }
               chain(s);
+              anchorHere(s);
             }
             for (const s of scene.strips) { s.manual = false; s.z = 0; s.el.style.zIndex = ""; if (s.gel) s.gel.style.zIndex = ""; if (s.mel) s.mel.style.zIndex = ""; }
             zTop = 0;
@@ -433,7 +461,7 @@ export function createFilm(scene, cfg = { push: 1, flutter: 1 }) {
         }
       }
       for (const s of scene.strips) {
-        if (Math.abs(s.vx) > 0 || Math.abs(s.vy) > 0) active = true;
+        if (Math.abs(s.vx) > 0 || Math.abs(s.vy) > 0 || Math.abs(s.vw) > 0) active = true;
         for (const c of s.cells) if (Math.abs(c.ang) > 0.0002 || Math.abs(c.omega) > 0.00001) active = true;
       }
       // sound: a strip moving on the board slides; one riding over another also crackles
@@ -483,7 +511,7 @@ export function createFilm(scene, cfg = { push: 1, flutter: 1 }) {
       if (hit.s.mel) hit.s.mel.style.zIndex = hit.s.z;
       held = { s: hit.s, gx: hit.gx, gy: hit.gy, t: performance.now(), v: { x: 0, y: 0, w: 0 }, speed: 0 };
       hit.s.cvx = hit.s.cvy = hit.s.cw = 0;
-      hit.s.vx = hit.s.vy = 0;
+      hit.s.vx = hit.s.vy = hit.s.vw = 0;
     },
 
     /* the pointer moved: bring the held point toward it, as far as a neighbour allows */
