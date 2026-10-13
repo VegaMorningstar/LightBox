@@ -747,11 +747,13 @@ function createWindowView(scene, dpr, { mode, bg }) {
     setDpr(d) { dpr = d; resize(size); },
     render(cx, cy, scale = 1) {
       ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.fillStyle = bg;
+      ctx.fillStyle = scene.dark ?? "#120c08";             // beyond the sheet is the dark room, not more board
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       const k = dpr * scale;
       scene.drawScale = k;                                 // lets the photo drawing pick a thumbnail or the sharper picture
       ctx.setTransform(k, 0, 0, k, (canvas.width - k * 2 * cx) / 2, (canvas.height - k * 2 * cy) / 2);
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, scene.W, scene.H);                // the sheet itself
       const half = size / 2 / scale;
       // the surface of the light box: its dark room, the fall of its light and the rim's highlight. The film, the buttons and the dust
       // lie on it, so they are drawn over it, and the panel's grain and falloff go over everything, as on the page.
