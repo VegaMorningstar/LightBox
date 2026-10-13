@@ -198,12 +198,14 @@ function buildControls(rows, { onOrganize, onButton, sliders = true } = {}) {
   return { wrap: nav, setters };
 }
 
-export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFade = 0.85, volumes = {}, filmDrag = 1, filmFlutter = 1, stacking = 1, panelFalloff = 1, panelGlow = 1, panelGrain = 1, lightBleed = 1, size, controls = true, sliders = true } = {}) {
+export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFade = 0.85, volumes = {}, outerGlass = {}, filmDrag = 1, filmFlutter = 1, stacking = 1, panelFalloff = 1, panelGlow = 1, panelGrain = 1, lightBleed = 1, size, controls = true, sliders = true } = {}) {
   root.classList.add("lb-root");
   const stage = div("lb-stage");
   root.replaceChildren(stage);
   root.append(buildFilmFilter("lb-film-alpha", parseColor(getComputedStyle(root).getPropertyValue("--lb-bg").trim() || "#ddd0b6")));
 
+  // the outer glass (PA): 0 = a dome, 1 = a frustum widest at its base (see glass.js)
+  const pa = { shape: 1, slope: 60, wall: 1, index: 1.49, dispersion: 0, reflect: 0.5, lip: 6, lipK: 1, cast: 1, ringShade: 0.6, ringShadeOff: 1, squig: 0.8, ...outerGlass };
   const loupe = buildEyepiece();
   // The light box's own unevenness lies over the board and the film. Falloff, grain and dust all darken the light, so
   // they share one canvas; the glow, which brightens it, is another.
@@ -232,6 +234,8 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
   // between 0 (resting) and 1 (held up) and drives how much the glass sees and its shadow. While it is up it has no
   // effect on the film and makes no sliding or crackling sounds.
   let lift = 0, liftGoal = 0;
+  let liftHeight = 1.25;               // how high it is lifted (a multiple of the old lift), for everything that depends on height
+  let liftTime = 200;                  // ms to reach the top; setting it down takes about half that
   let glassTap = null, glassPress = null;   // taps on the glass, to tell a double press from a single one
   const LIFT_AREA = 0.4;               // extra area the lens takes in at full lift
   const LIFT_SCALE = 0.045;            // and how much closer (bigger) the eyepiece looks
@@ -270,7 +274,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
   };
 
   const render = () => {
-    const L = smooth(lift);
+    const L = smooth(lift) * liftHeight;
     loupe.el.style.transform = `translate(${cur.x - Do / 2}px, ${cur.y - Do / 2}px) scale(${(1 + LIFT_SCALE * L).toFixed(4)})`;
     loupe.el.style.setProperty("--lift", L.toFixed(3));
     if (lens && view) {
@@ -284,7 +288,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     }
     if (glass && negView) {
       negView.render(cur.x, cur.y, 1);
-      glass.draw(negView.canvas, negSide, D / 2, L);
+      glass.draw(negView.canvas, negSide, D / 2, L, pa);
     }
   };
 
@@ -344,10 +348,10 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     lastT = t;
     if (adaptive && raw) govern(raw);
     if (coasting) coast(dt);
-    // up fast and easing out, down a touch quicker; the sound of it touching down plays as it lands
+    // up steadily (the page eases it in and out), down about twice as fast; the sound of it touching down plays as it lands
     const wasUp = lift > 0;
-    if (lift < liftGoal) lift = Math.min(liftGoal, lift + (1 - lift) * (1 - Math.exp(-dt / 55)) + dt / 900);
-    else if (lift > liftGoal) lift = Math.max(liftGoal, lift - dt / 170);
+    if (lift < liftGoal) lift = Math.min(liftGoal, lift + dt / liftTime);
+    else if (lift > liftGoal) lift = Math.max(liftGoal, lift - dt / Math.max(170, liftTime * 0.45));
     if (wasUp && lift === 0) sounds.place();
     const px = cur.x, py = cur.y;
     cur.x += (goal.x - cur.x) * 0.35;
@@ -411,6 +415,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     loupe.el.style.setProperty("--D", `${D}px`);
     loupe.el.style.setProperty("--w", `${w}px`);
     glass?.resize(Do, qOuter());
+    loupe.el.style.setProperty("--gp", `${glass ? glass.pad : 0}px`);
     lens?.resize(G, qLens());
     lensPad = Math.round(G * 0.2);
     view = null;
@@ -504,6 +509,20 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
       { group: "Eyepiece", key: "zoom", name: "Magnification", min: ZOOM_MIN, max: ZOOM_MAX, step: 0.05, value: zoom, onInput: setZoom },
       { group: "Rim shadow", key: "shadow", name: "Shadow strength", min: 0, max: 6, step: 0.05, value: shadow, onInput: setShadow },
       { group: "Rim shadow", key: "fade", name: "Shadow fade", min: 0.1, max: 3, step: 0.05, value: shadowFade, onInput: setFade },
+      { group: "Outer glass (PA)", key: "paShape", name: "Shape: dome to frustum", min: 0, max: 1, step: 0.05, value: pa.shape, onInput: (v) => { pa.shape = v; render(); } },
+      { group: "Outer glass (PA)", key: "paSlope", name: "Wall slope (degrees)", min: 15, max: 85, step: 1, value: pa.slope, onInput: (v) => { pa.slope = v; render(); } },
+      { group: "Outer glass (PA)", key: "paWall", name: "Wall width", min: 0.2, max: 1, step: 0.05, value: pa.wall, onInput: (v) => { pa.wall = v; render(); } },
+      { group: "Outer glass (PA)", key: "paLip", name: "Edge thickness (px)", min: 0, max: 28, step: 1, value: pa.lip, onInput: (v) => { pa.lip = v; render(); } },
+      { group: "Outer glass (PA)", key: "paLipK", name: "Edge highlights and shade", min: 0, max: 2, step: 0.05, value: pa.lipK, onInput: (v) => { pa.lipK = v; render(); } },
+      { group: "Outer glass (PA)", key: "paSquig", name: "Window highlights", min: 0, max: 1.5, step: 0.05, value: pa.squig, onInput: (v) => { pa.squig = v; render(); } },
+      { group: "Outer glass (PA)", key: "paRingShade", name: "Inner shadow of the loupe", min: 0, max: 1, step: 0.05, value: pa.ringShade, onInput: (v) => { pa.ringShade = v; render(); } },
+      { group: "Outer glass (PA)", key: "paRingShadeOff", name: "Inner shadow: how far it falls", min: 0, max: 2, step: 0.05, value: pa.ringShadeOff, onInput: (v) => { pa.ringShadeOff = v; render(); } },
+      { group: "Outer glass (PA)", key: "paCast", name: "Light and shadow on the board", min: 0, max: 2, step: 0.05, value: pa.cast, onInput: (v) => { pa.cast = v; render(); } },
+      { group: "Lifting", key: "liftHeight", name: "Lift height", min: 0.5, max: 3, step: 0.05, value: liftHeight, onInput: (v) => { liftHeight = v; render(); } },
+      { group: "Lifting", key: "liftTime", name: "Lift time (ms)", min: 150, max: 2500, step: 50, value: liftTime, onInput: (v) => { liftTime = v; } },
+      { group: "Outer glass (PA)", key: "paReflect", name: "Wall reflections", min: 0, max: 1, step: 0.05, value: pa.reflect, onInput: (v) => { pa.reflect = v; render(); } },
+      { group: "Outer glass (PA)", key: "paIndex", name: "Glass index", min: 1.2, max: 2, step: 0.01, value: pa.index, onInput: (v) => { pa.index = v; render(); } },
+      { group: "Outer glass (PA)", key: "paDisp", name: "Extra colour spread", min: 0, max: 0.2, step: 0.005, value: pa.dispersion, onInput: (v) => { pa.dispersion = v; render(); } },
       { group: "Light box", key: "falloff", name: "Panel falloff", min: 0, max: 2, step: 0.05, value: panelFalloff, onInput: (v) => { falloff = v; queueOverlay(); if (sceneRef) sceneRef.fall = v; render(); } },
       { group: "Light box", key: "glow", name: "Panel glow", min: 0, max: 2, step: 0.05, value: panelGlow, onInput: (v) => { glow = v; drawGlow(); if (sceneRef) sceneRef.glow = v; render(); } },
       { group: "Light box", key: "grain", name: "Panel grain", min: 0, max: 2, step: 0.05, value: panelGrain, onInput: (v) => { grain = v; queueOverlay(); if (sceneRef) sceneRef.grain = v; render(); } },
