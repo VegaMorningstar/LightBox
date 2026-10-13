@@ -90,25 +90,14 @@
 
 /* the light panel's falloff, grain and dust are one canvas that darkens the light, and the glow is another that brightens it
    (both are painted from script, see raster.js) */
+.lb-glow { clip-path: inset(var(--edge-m) round calc(var(--edge-f) * 0.9)); }   /* the panel's own glow stays on the panel, off the dark room round it */
 .lb-overlay, .lb-glow { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .lb-seep { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; mix-blend-mode: screen; }
 .lb-overlay { mix-blend-mode: multiply; }
-/* The light box is a lit panel with rounded corners in a dark room: past its rim the page goes dark, and the light falls off
-   softly toward the rim (see the photograph of a real one). One element does both: its box-shadow paints the dark outside
-   the panel, and its inset shadows darken the panel toward its edge. */
-.lb-edge {
-  position: absolute;
-  inset: var(--edge-m);
-  border-radius: calc(var(--edge-f) * 0.9);
-  pointer-events: none;
-  /* a warm brown glow, then the dark, then the dark room; the element is blurred a little so the rim is frosted, with no line
-     where the panel stops. The falloff lies in the margin (--edge-m plus --edge-f) that the film leaves clear. */
-  box-shadow:
-    inset 0 0 calc(var(--edge-f) * 0.9) calc(var(--edge-f) * 0.05) rgba(84, 52, 24, .5),
-    inset 0 0 calc(var(--edge-f) * 0.95) calc(var(--edge-f) * 0.1) rgba(20, 12, 6, .85),
-    0 0 0 100px var(--lb-dark);
-  filter: blur(clamp(5px, 0.9vw, 11px));
-}
+/* The light box is a lit panel with rounded corners in a dark room: past its rim the page goes dark, the light falls off softly toward
+   the rim, and a thin highlight marks where the edge curves away (see the photograph of a real one). It is one picture, baked by
+   bakeEdge in raster.js, which the glasses draw too. */
+.lb-edge { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: -1; }   /* part of the surface: under the film */
 .lb-dust { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; mix-blend-mode: multiply; }
 .lb-glow { mix-blend-mode: color-dodge; }
 .lb-cell:first-child {                    /* leader before the first frame */

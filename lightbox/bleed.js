@@ -116,7 +116,16 @@ export function createBleed() {
  * bright hole. holes: {x, y, rx, ry, rot, si, k} in sheet px (si: which strip it is in, kept in order); quads: the
  * strips' outlines. Only film is lit: each strip's bloom is clipped to that strip. The context should already have the
  * sheet-to-canvas transform set; `view` (optional {x0,y0,x1,y1} in sheet px) skips holes out of sight. */
-export function paintHoles(ctx, holes, quads, spread, strength, view) {
+export function paintHoles(ctx, holes, quads, spread, strength, view, exclude = []) {
+  // A hole only glows where the light box's surface shows through it. Where a strip lies over another (exclude: those shared
+  // patches), there is film behind the hole, not the lit panel, so nothing is drawn there.
+  if (exclude.length) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(-1e5, -1e5, 2e5, 2e5);
+    for (const q of exclude) { q.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.closePath(); }
+    ctx.clip("evenodd");
+  }
   const reach = 1 + 0.5 * (1.1 + spread / 30);                // how far the bloom runs past the hole, in hole sizes
   let clipped = -1;
   for (const h of holes) {
@@ -151,4 +160,5 @@ export function paintHoles(ctx, holes, quads, spread, strength, view) {
     ctx.restore();
   }
   if (clipped >= 0) ctx.restore();
+  if (exclude.length) ctx.restore();
 }

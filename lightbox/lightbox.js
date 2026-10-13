@@ -217,7 +217,8 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
   const seepFx = createBleed();             // light from open board spilling onto the edges of the film (see bleed.js)
   const seepEl = seepFx.canvas;
   seepEl.className = "lb-seep";
-  const edgeEl = div("lb-edge");                       // the dark room around the lit panel, and the panel's light falling off at its rim
+  let edgeEl = document.createElement("canvas");         // the dark room around the lit panel, the fall of its light and the rim's highlight (bakeEdge)
+  edgeEl.className = "lb-edge";
   const dustEl = document.createElement("canvas");    // dust on the board and film borders (kept off the photographs)
   dustEl.className = "lb-dust";
   let dustKey = "";
@@ -295,8 +296,9 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     const quads = sc.strips.map(stripQuad);
     seepFx.update(sc.W, sc.H, quads, spread, seep);
     const holes = holeSpots(sc.strips);
+    sc.holeExclude = sc.strips.flatMap((s) => s.over);       // where film lies over film, no light comes up through a hole
     sc.holes = holes; sc.holeQuads = quads; sc.seepSpread = spread; sc.seepStrength = seep;
-    const key = [sc.W, sc.H, spread, seep, ...holes.map((h) => `${Math.round(h.x)},${Math.round(h.y)},${h.k}`)].join("|");
+    const key = [sc.W, sc.H, spread, seep, ...holes.map((h) => `${Math.round(h.x)},${Math.round(h.y)},${h.k}`), "ov", ...sc.holeExclude.flat(2).map((v) => Math.round(v))].join("|");
     if (key === holesKey) return;
     holesKey = key;
     const dpr = overlayDpr();
@@ -307,7 +309,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     c.setTransform(1, 0, 0, 1, 0, 0);
     c.clearRect(0, 0, holesEl.width, holesEl.height);
     c.setTransform(dpr, 0, 0, dpr, 0, 0);
-    paintHoles(c, holes, quads, spread, seep);
+    paintHoles(c, holes, quads, spread, seep, null, sc.holeExclude);
   }
 
   // The buttons lie on the panel, so film can slide over them; a button with film over any part of it cannot be pressed (a
@@ -507,7 +509,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     // The film starts only where the light panel is at full brightness: past the dark margin and the soft falloff of its rim
     // (the sizes below match --edge-m and --edge-f in the stylesheet).
     const edgeM = Math.max(8, Math.min(20, root.clientWidth * 0.014)), edgeF = Math.max(26, Math.min(58, root.clientWidth * 0.04));
-    edgeSize = { m: edgeM, f: edgeF };
+    edgeSize = { m: edgeM, f: edgeF, blur: Math.max(5, Math.min(11, innerWidth * 0.009)) };
     const pad = Math.round(edgeM + edgeF + 8);
     stage.style.setProperty("--pad", `${pad}px`);
     stage.style.setProperty("--pad-top", `${pad + 52}px`);       // room above the film for the buttons, in the lit part of the panel
@@ -541,9 +543,15 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
       buildSheet(photos, fw, "lb-neg"),
       ...(glass && lens ? [buildSheet(photos, fw, "lb-ghost"), buildSheet(photos, fw, "lb-mult")] : []),
     );
-    stage.replaceChildren(...(cornerEl ? [cornerEl] : []), filmLayer, seepEl, holesEl, overlayEl, dustEl, glowEl, edgeEl, loupe.el);
+    stage.replaceChildren(...(cornerEl ? [cornerEl] : []), edgeEl, filmLayer, seepEl, holesEl, overlayEl, dustEl, glowEl, loupe.el);
     holesKey = "";
     dustKey = "";
+    {   // the rim is baked at the sheet's real size, which is known now the film is in
+      const baked = bakeEdge(stage.clientWidth, stage.offsetHeight, edgeSize.m, edgeSize.f, edgeSize.blur);
+      baked.className = "lb-edge";
+      edgeEl.replaceWith(baked);
+      edgeEl = baked;
+    }
     specks = createSpecks(stage.clientWidth, stage.offsetHeight);
     drawOverlay();
     drawGlow();
@@ -575,7 +583,8 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
           scene.hiLoaded = () => { render(); };         // a sharper picture arrived: redraw the lens
           scene.specks = specks;
           scene.seepCanvas = seepEl;
-          scene.edgeCanvas = bakeEdge(scene.W, scene.H, edgeSize.m, edgeSize.f, Math.max(5, Math.min(11, innerWidth * 0.009)));
+          scene.edgeCanvas = edgeEl;
+          scene.edge = edgeSize;
           scene.stack = stacking_; scene.fall = falloff; scene.glow = glow; scene.grain = grain;
           film = createFilm(scene, filmCfg);
           sceneRef = scene;

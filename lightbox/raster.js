@@ -206,39 +206,62 @@ export function paintOverlay(ctx, W, H, { fall, grain }) {
   paintGrain(ctx, W, H, grain);
 }
 
-/* The dark room around the lit panel and the fall of its light toward the rim, baked once as a picture of the whole sheet, for the
- * glasses to draw (the page draws the same thing with CSS, `.lb-edge`; keep the two in step). m: the dark margin, f: how far the
- * light falls off inside the rim, blur: how frosted the rim is, all in css px. Drawn at half size: it is all soft. */
-export function bakeEdge(W, H, m, f, blur) {
-  const S = 0.5, P = 40;                                   // scale, and spare room round the picture so the blur has something to blur
+/* The dark room around the lit panel, the fall of its light toward the rim, and the highlight where the rim curves away, baked once
+ * as a picture of the whole sheet. The page shows this picture over the sheet and the glasses draw the same one, so they always
+ * agree. From the inside out: the lit surface, a fall to dark (a warm brown glow, then a dark one), a thin soft highlight where the
+ * edge turns over, then the dark room. m: the dark margin, f: how far the light falls off inside the rim, blur: how frosted the fall
+ * is, all in css px. */
+export function bakeEdge(W, H, m, f, blur, S = 1) {
+  const P = 40;                                            // spare room round the picture so the blur has something to blur
   const w = Math.ceil((W + 2 * P) * S), h = Math.ceil((H + 2 * P) * S);
   const c = document.createElement("canvas");
   c.width = w; c.height = h;
   const g = c.getContext("2d");
   g.scale(S, S);
   g.translate(P, P);
-  const rr = (inset) => {                                  // the panel: its rounded rectangle, shrunk by `inset`
+  const rrPath = (ctx, inset) => {                         // the panel: its rounded rectangle, shrunk by `inset`
     const x = m + inset, y = m + inset, ww = W - 2 * (m + inset), hh = H - 2 * (m + inset);
     const r = Math.max(0, f * 0.9 - inset);
-    g.moveTo(x + r, y); g.arcTo(x + ww, y, x + ww, y + hh, r); g.arcTo(x + ww, y + hh, x, y + hh, r); g.arcTo(x, y + hh, x, y, r); g.arcTo(x, y, x + ww, y, r); g.closePath();
+    ctx.moveTo(x + r, y); ctx.arcTo(x + ww, y, x + ww, y + hh, r); ctx.arcTo(x + ww, y + hh, x, y + hh, r); ctx.arcTo(x, y + hh, x, y, r); ctx.arcTo(x, y, x + ww, y, r); ctx.closePath();
   };
   const big = () => g.rect(-P - 200, -P - 200, W + 2 * P + 400, H + 2 * P + 400);
   // the dark room, outside the panel
-  g.beginPath(); big(); rr(0); g.fillStyle = "#120c08"; g.fill("evenodd");
+  g.beginPath(); big(); rrPath(g, 0); g.fillStyle = "#120c08"; g.fill("evenodd");
   // two inset glows inside the rim: a warm brown one, then a dark one
-  for (const [colour, blurK, spreadK] of [["rgba(84,52,24,.5)", 0.9, 0.05], ["rgba(20,12,6,.8)", 0.95, 0.1]]) {
+  for (const [colour, blurK, spreadK] of [["rgba(84,52,24,.5)", 0.9, 0.05], ["rgba(20,12,6,.9)", 0.95, 0.12]]) {
     g.save();
-    g.beginPath(); rr(0); g.clip();
-    g.shadowColor = colour; g.shadowBlur = f * blurK; g.shadowOffsetX = 0; g.shadowOffsetY = 0;
-    g.beginPath(); big(); rr(f * spreadK); g.fillStyle = colour; g.fill("evenodd");
+    g.beginPath(); rrPath(g, 0); g.clip();
+    g.shadowColor = colour; g.shadowBlur = f * blurK * S; g.shadowOffsetX = 0; g.shadowOffsetY = 0;
+    g.beginPath(); big(); rrPath(g, f * spreadK); g.fillStyle = colour; g.fill("evenodd");
     g.restore();
   }
-  // frost the whole rim, then cut away the spare room
+  // frost the fall and the edge of the room, then cut away the spare room
   const out = document.createElement("canvas");
   out.width = Math.ceil(W * S); out.height = Math.ceil(H * S);
   const o = out.getContext("2d");
   o.filter = `blur(${blur * S}px)`;
   o.drawImage(c, -P * S, -P * S);
+  o.filter = "none";
+  // Reading the rim from the dark room inward: the dark room; a faint warm glow just outside the edge; the edge itself, softened; a
+  // narrow highlight where the edge bends, with a little glow so the light seems to be inside the box; the dark gradient above; then the
+  // lit surface. The edge and highlight are brightest toward the light (the upper left). (The dark fall is drawn above.)
+  const hl = document.createElement("canvas");
+  hl.width = out.width; hl.height = out.height;
+  const hc = hl.getContext("2d");
+  const grad = hc.createLinearGradient(0, 0, out.width, out.height);
+  grad.addColorStop(0, "rgba(232,206,166,1)"); grad.addColorStop(.55, "rgba(232,206,166,.5)"); grad.addColorStop(1, "rgba(232,206,166,.75)");
+  hc.scale(S, S);
+  const layer = (inset, lw, alpha, blurPx, style = grad) => {
+    hc.filter = blurPx > 0 ? `blur(${blurPx * S}px)` : "none";
+    hc.globalAlpha = alpha; hc.lineWidth = lw; hc.strokeStyle = style;
+    hc.beginPath(); rrPath(hc, inset); hc.stroke();
+  };
+  layer(-4, 7, 0.2, 5, "rgba(170,128,84,1)");   // the glow just outside the edge
+  layer(2.5, 16, 0.11, 5);                        // the wide, faint fall-off of the light, fading out both ways
+  layer(2.5, 7, 0.18, 2.6);                       // a nearer, brighter band of it
+  layer(2.4, 1.6, 0.34, 1);                       // the highlight itself: narrow at its core, with the fade round it
+  hc.filter = "none"; hc.globalAlpha = 1;
+  o.drawImage(hl, 0, 0);
   return out;
 }
 
@@ -730,6 +753,9 @@ function createWindowView(scene, dpr, { mode, bg }) {
       scene.drawScale = k;                                 // lets the photo drawing pick a thumbnail or the sharper picture
       ctx.setTransform(k, 0, 0, k, (canvas.width - k * 2 * cx) / 2, (canvas.height - k * 2 * cy) / 2);
       const half = size / 2 / scale;
+      // the surface of the light box: its dark room, the fall of its light and the rim's highlight. The film, the buttons and the dust
+      // lie on it, so they are drawn over it, and the panel's grain and falloff go over everything, as on the page.
+      if (scene.edgeCanvas) ctx.drawImage(scene.edgeCanvas, 0, 0, scene.edgeCanvas.width, scene.edgeCanvas.height, 0, 0, scene.W, scene.H);
       for (const btn of scene.buttons ?? []) paintSocketButton(ctx, btn);      // the push buttons lie on the panel, under the film
       drawScene(ctx, scene, { mode, view: { x0: cx - half, y0: cy - half, x1: cx + half, y1: cy + half } });
       scene.specks?.draw(ctx, { x0: cx - half, y0: cy - half, x1: cx + half, y1: cy + half }, scene.frames);   // dust lying on the panel
@@ -746,14 +772,23 @@ function createWindowView(scene, dpr, { mode, bg }) {
       if (scene.seepCanvas && scene.seepCanvas.width > 2) {     // light from the open board spilling onto the film's edges
         ctx.globalCompositeOperation = "screen";
         ctx.drawImage(scene.seepCanvas, 0, 0, scene.W, scene.H);
-        if (scene.holes?.length) paintHoles(ctx, scene.holes, scene.holeQuads, scene.seepSpread, scene.seepStrength, { x0: cx - half, y0: cy - half, x1: cx + half, y1: cy + half });
+        if (scene.holes?.length) paintHoles(ctx, scene.holes, scene.holeQuads, scene.seepSpread, scene.seepStrength, { x0: cx - half, y0: cy - half, x1: cx + half, y1: cy + half }, scene.holeExclude);
         ctx.globalCompositeOperation = "source-over";
       }
+      // the panel's light (its falloff and glow) belongs to the panel, not the dark room round it
+      if (scene.edge) {
+        const { m, f } = scene.edge, r = f * 0.9;
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(m + r, m); ctx.arcTo(scene.W - m, m, scene.W - m, scene.H - m, r); ctx.arcTo(scene.W - m, scene.H - m, m, scene.H - m, r);
+        ctx.arcTo(m, scene.H - m, m, m, r); ctx.arcTo(m, m, scene.W - m, m, r); ctx.closePath();
+        ctx.clip();
+      }
       paintPanel(ctx, scene);      // the light box itself is brighter in the middle
+      if (scene.edge) ctx.restore();
       // ...and its surface is matte, not smooth. The grain belongs to the panel, so it is left out of the lens:
       // the photo seen through the eyepiece must not pick up any extra grain.
       if (mode !== "pos") paintGrain(ctx, scene.W, scene.H, scene.grain);
-      if (scene.edgeCanvas) ctx.drawImage(scene.edgeCanvas, 0, 0, scene.W, scene.H);      // the dark room and the panel's rim, seen through the glass too
       if (mode === "pos" && scene.frames?.length) ctx.restore();
     },
   };
