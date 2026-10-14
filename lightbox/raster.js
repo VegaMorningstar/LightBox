@@ -15,6 +15,7 @@
  */
 
 import { paintHoles } from "./bleed.js";
+import { EDGE_DARK, EDGE_SHRINK, PERSP, overRim, profile } from "./bend.js";
 import { paintSocketButton } from "./socket-buttons/buttons.js";
 
 const ORANGE = [217 / 255, 132 / 255, 58 / 255]; // film-mask cast, matches .lb-neg .lb-img::after
@@ -329,6 +330,20 @@ const hash01 = (a, b, c) => {
  * its centre, its half-size, the strip's tilt, which strip it is in and how brightly it lets light through. */
 export function holeSpots(strips) {
   const out = [];
+  // A hole that lies under or over another strip is not open to the panel: it is a hole in film with more film behind (or in front of) it, so
+  // it shows what is there and never glows. Tested against each other strip's outline (with a margin, which also covers a bent strip's reach).
+  const quads = strips.map((t) => stripQuad(t));
+  const box = quads.map((q) => [Math.min(...q.map((p) => p[0])), Math.max(...q.map((p) => p[0])), Math.min(...q.map((p) => p[1])), Math.max(...q.map((p) => p[1]))]);
+  const inside = (q, x, y) => { for (let i = 0; i < 4; i++) { const [ax, ay] = q[i], [bx, by] = q[(i + 1) % 4]; if ((bx - ax) * (y - ay) - (by - ay) * (x - ax) < 0) return false; } return true; };
+  const covered = (si, x, y, rx, ry) => {
+    for (let j = 0; j < strips.length; j++) {
+      if (j === si) continue;
+      const b = box[j];
+      if (x + rx < b[0] || x - rx > b[1] || y + ry < b[2] || y - ry > b[3]) continue;
+      if (inside(quads[j], x, y) || inside(quads[j], x - rx, y) || inside(quads[j], x + rx, y) || inside(quads[j], x, y - ry) || inside(quads[j], x, y + ry)) return true;
+    }
+    return false;
+  };
   strips.forEach((s, si) => {
     const tx = s.left + s.w / 2 + s.ox, ty = s.top + s.oy;
     const cs = Math.cos(s.rot), sn = Math.sin(s.rot);
@@ -342,11 +357,271 @@ export function holeSpots(strips) {
         for (let y = tile0 - Math.ceil(tile0 / s.hp) * s.hp; y < c.h; y += s.hp) {
           const ly = c.top + c.dy + y + 0.5 * s.hp;
           if (ly < c.top || ly > c.top + c.h - 6) continue;      // a hole belongs to the cell it starts in
-          out.push({ x: tx + lx * cs - ly * sn, y: ty + lx * sn + ly * cs, rx: 0.23 * s.b, ry: 0.24 * s.hp, rot: s.rot, si, k });
+          const hx = tx + lx * cs - ly * sn, hy = ty + lx * sn + ly * cs;
+          if (covered(si, hx, hy, 0.23 * s.b, 0.24 * s.hp)) continue;
+          out.push({ x: hx, y: hy, rx: 0.23 * s.b, ry: 0.24 * s.hp, rot: s.rot, si, k });
         }
       }
     }
   });
+  return out;
+}
+
+/* The shadow a lifted (bent) strip casts on whatever is below it, as a soft gradient, not a hard shape. Light is from the upper left, so the
+ * shadow falls to the lower right, further the higher the film is. Two layers: where the film is low the shadow is close, dark and fairly sharp
+ * (contact); where it is high it is far, lighter and very soft. Each layer is drawn small and scaled up, which is what blurs it, so no
+ * blur filter is needed. The sprocket holes let light through, so the near layer has gaps in the same pattern.
+ * Used by the page (over the film, under the bent strip itself) and by both glasses. ctx is in sheet px. */
+const shadowLayers = [];
+function shadowLayer(i, W, H, div, x0 = 0, y0 = 0) {
+  let L = shadowLayers[i];
+  const w = Math.max(2, Math.ceil(W / div)), h = Math.max(2, Math.ceil(H / div));
+  if (!L) L = shadowLayers[i] = document.createElement("canvas");
+  if (L.width !== w || L.height !== h) { L.width = w; L.height = h; }
+  const g = L.getContext("2d");
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.clearRect(0, 0, w, h);
+  g.setTransform(1 / div, 0, 0, 1 / div, -x0 / div, -y0 / div);
+  return [L, g];
+}
+export function paintBendShadows(ctx, strips, W, H, x0 = 0, y0 = 0) {
+  const bent = strips.filter((s) => s.bk && (s.bk.a >= 0.4 || s.bk.d >= 0.4));
+  if (!bent.length) return;
+  const [near, gn] = shadowLayer(0, W, H, 4, x0, y0);
+  const [far, gf] = shadowLayer(1, W, H, 12, x0, y0);
+  for (const s of bent) {
+    const bk = s.bk, lo = Math.min(bk.hand, bk.pin), hi = Math.max(bk.hand, bk.pin);
+    const c = Math.cos(s.rot), n = Math.sin(s.rot), tx = s.left + s.w / 2 + s.ox, ty = s.top + s.oy;
+    // The shadow of the peak is one continuous shape (the silhouette of the lifted film, thrown toward the lower right by its height), not
+    // a row of pieces. Each contour of it (where the film is higher than some height) is filled once; stacked, they make the shadow denser
+    // where the film is higher or lower, and the scaling-up blurs the steps away.
+    const ribbon = (zMin) => {
+      const L = [], R = [];
+      for (let y = lo; y <= hi + 0.01; y += 5) {
+        const p = profile(bk, y);
+        if (p.z < zMin) { if (L.length) break; else continue; }
+        const ox = p.z * 0.85, oy = p.z * 1.15, yy = y + p.by;
+        L.push([tx - (s.w / 2) * c - yy * n + ox, ty - (s.w / 2) * n + yy * c + oy]);
+        R.push([tx + (s.w / 2) * c - yy * n + ox, ty + (s.w / 2) * n + yy * c + oy]);
+      }
+      return L.length > 1 ? [...L, ...R.reverse()] : null;
+    };
+    const peak = bk.a * bk.amp, lift = Math.min(1, peak / 70);
+    const fill = (g, zMin, alpha) => {
+      const poly = ribbon(zMin);
+      if (!poly) return;
+      g.fillStyle = `rgba(30,18,6,${alpha.toFixed(3)})`;
+      g.beginPath();
+      poly.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y)));
+      g.closePath();
+      g.fill();
+    };
+    // near: close and fairly dark where the film is low; far: wide, light and very soft where it is high
+    fill(gn, 0.6, 0.2 * (1 - 0.5 * lift)); fill(gn, peak * 0.2, 0.16 * (1 - 0.5 * lift)); fill(gn, peak * 0.5, 0.14 * (1 - 0.5 * lift));
+    fill(gf, 0.6, 0.12 * lift + 0.04); fill(gf, peak * 0.25, 0.14 * lift); fill(gf, peak * 0.55, 0.16 * lift);
+    // light through the sprocket holes
+    gn.globalCompositeOperation = "destination-out";
+    for (const cell of s.cells) {
+      const tile0 = cell.index === 0 ? s.pt : 0;
+      for (let y = tile0 - Math.ceil(tile0 / s.hp) * s.hp; y < cell.h; y += s.hp) {
+        const hy = cell.top + y + 0.5 * s.hp, pr = profile(bk, hy);
+        if (pr.z < 1) continue;
+        for (const hx of [-s.w / 2 + 0.37 * s.b, s.w / 2 - 0.37 * s.b]) {
+          const wx = tx + hx * c - (hy + pr.by) * n + pr.z * 0.85, wy = ty + hx * n + (hy + pr.by) * c + pr.z * 1.15;
+          const rg = gn.createRadialGradient(wx, wy, 0, wx, wy, 0.55 * s.hp);
+          rg.addColorStop(0, "rgba(0,0,0,.6)"); rg.addColorStop(1, "rgba(0,0,0,0)");
+          gn.fillStyle = rg;
+          gn.fillRect(wx - 0.6 * s.hp, wy - 0.6 * s.hp, 1.2 * s.hp, 1.2 * s.hp);
+        }
+      }
+    }
+    gn.globalCompositeOperation = "source-over";
+  }
+  ctx.save();
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(far, x0, y0, W, H);
+  ctx.drawImage(near, x0, y0, W, H);
+  ctx.restore();
+}
+
+/* ---------- bent strips ----------
+ * A strip that is bent (lifted into an arch, see bend.js) or hangs over the rim of the panel is drawn as thin slices, each slice with its
+ * own scale and shift, so the bend is smooth along the film instead of one step per frame. The strip is first drawn flat into a
+ * texture (once, redrawn only when its pictures change), then the slices are cut from it. Slices lit from the upper left are
+ * brighter, slices facing away darker, and slices curving away over the rim darker and smaller. */
+const texCache = new WeakMap();
+const scratchCache = new WeakMap();
+const BENT_MARGIN_Y = 130, BENT_MARGIN_X = 0.2;
+
+function flatTexture(scene, s, mode, kk, variant = "opaque") {
+  const sig = s.cells.map((c) => (c.frame.neg ? 1 : 0) + (c.frame.hi ? 2 : 0)).join("");
+  const key = `${kk}|${sig}`;
+  let t = texCache.get(s);
+  if (!t) texCache.set(s, (t = {}));
+  const e = t[mode + variant];
+  if (e && e.key === key) return e.canvas;
+  const cv = e?.canvas ?? document.createElement("canvas");
+  cv.width = Math.ceil(s.w * kk); cv.height = Math.ceil(s.h * kk);
+  const g = cv.getContext("2d");
+  g.clearRect(0, 0, cv.width, cv.height);
+  const saved = { ox: s.ox, oy: s.oy, rot: s.rot, over: s.over, cells: s.cells.map((c) => [c.x, c.dy, c.ang, c.k]), ds: scene.drawScale };
+  s.ox = -s.left; s.oy = -s.top; s.rot = 0; s.over = [];
+  s.cells.forEach((c) => { c.x = 0; c.dy = 0; c.ang = 0; c.k = 1; });
+  g.setTransform(kk, 0, 0, kk, 0, 0);
+  scene.drawScale = kk;
+  drawStrip(g, scene, s, mode, null, variant);
+  s.ox = saved.ox; s.oy = saved.oy; s.rot = saved.rot; s.over = saved.over;
+  s.cells.forEach((c, i) => { [c.x, c.dy, c.ang, c.k] = saved.cells[i]; });
+  scene.drawScale = saved.ds;
+  t[mode + variant] = { canvas: cv, key };
+  return cv;
+}
+
+/* the bent strip, lit, in a canvas of its own (a box round the strip in its own coordinates); variant as for drawStrip */
+function bentScratch(scene, s, mode, kk, variant) {
+  const tex = flatTexture(scene, s, mode, kk, variant);
+  const mx = s.w * BENT_MARGIN_X, W = s.w + 2 * mx, H = s.h + 2 * BENT_MARGIN_Y;
+  let sset = scratchCache.get(s);
+  if (!sset) scratchCache.set(s, (sset = {}));
+  const sc = sset[variant] ?? (sset[variant] = document.createElement("canvas"));
+  const pw = Math.ceil(W * kk), ph = Math.ceil(H * kk);
+  if (sc.width !== pw || sc.height !== ph) { sc.width = pw; sc.height = ph; }
+  const g = sc.getContext("2d");
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.clearRect(0, 0, pw, ph);
+  g.setTransform(kk, 0, 0, kk, 0, 0);
+  g.imageSmoothingEnabled = true;
+  const bk = s.bk;
+  const N = Math.max(10, Math.ceil(s.h / 8));
+  const topX = s.left + s.w / 2 + s.ox, topY = s.top + s.oy, ce = Math.cos(s.rot), se = Math.sin(s.rot);
+  const edge = scene.edge, edgeK = scene.bendEdge ?? 1;
+  const oAt = (y) => {
+    if (!edge || edgeK <= 0) return 0;
+    const wx = topX - y * se, wy = topY + y * ce;                       // the point y along the strip, on the sheet
+    return Math.min(1, overRim(wx, wy, scene.W, scene.H, edge.m) * edgeK);
+  };
+  const dark = [], light = [], gloss = [];                       // the lighting along the strip, as colour stops for smooth gradients
+  let yTop = Infinity, yBot = -Infinity;
+  for (let j = 0; j < N; j++) {
+    const y0 = (s.h * j) / N, y1 = (s.h * (j + 1)) / N, yc = (y0 + y1) / 2;
+    const p0 = profile(bk, y0), p1 = profile(bk, y1), pc = profile(bk, yc);
+    const o = oAt(yc + pc.by);
+    const kx = (1 + PERSP * pc.z) * (1 - EDGE_SHRINK * o);
+    const dy0 = y0 + p0.by, dy1 = y1 + p1.by;
+    const dx = mx + (s.w * (1 - kx)) / 2, dyy = BENT_MARGIN_Y + dy0;
+    g.drawImage(tex, 0, y0 * kk, tex.width, (y1 - y0) * kk + 0.5, dx, dyy, s.w * kx, dy1 - dy0 + 0.7);
+    // Light from the upper left. Film is glossy, so a bend shows three things, each a smooth gradient along the strip (no seams):
+    //  - the side of the arch that faces the light is a little brighter, the side that faces away clearly darker;
+    //  - a narrow specular sheen where the surface mirrors the light toward the eye (a soft white band, the glint on a glossy surface);
+    //  - film curving away over the rim of the panel darker still.
+    const sl = Math.max(-0.7, Math.min(0.7, pc.dz));
+    const lf = Math.min(1, pc.z / 16), lift = lf * lf * (3 - 2 * lf);                                   // nothing to catch the light until it is lifted a little
+    const away = Math.max(0, -sl) * 1.5 * lift;
+    const d = Math.min(0.7, away + EDGE_DARK * o);
+    const diff = Math.max(0, sl) * 0.7 * lift;
+    const gl = (sl - 0.2) / 0.14, gl2 = (sl + 0.34) / 0.14;
+    const spec = (0.95 * Math.exp(-gl * gl) + 0.22 * Math.exp(-gl2 * gl2)) * lift;
+    const at = BENT_MARGIN_Y + (dy0 + dy1) / 2;
+    dark.push([at, d]); light.push([at, Math.min(0.3, diff)]); gloss.push([at, Math.min(0.85, spec)]);
+    yTop = Math.min(yTop, BENT_MARGIN_Y + dy0); yBot = Math.max(yBot, BENT_MARGIN_Y + dy1);
+  }
+  // Blend each lighting curve into itself over a short distance either side, so where the peak begins and ends the highlight and the shadow
+  // fade out gently into the flat film instead of stopping.
+  const soften = (stops) => {
+    const K = [1, 2, 3, 4, 3, 2, 1], ks = 16, n = stops.length;
+    for (let pass = 0; pass < 2; pass++) {
+      const v = stops.map(([, a]) => a);
+      for (let i = 0; i < n; i++) {
+        let acc = 0;
+        for (let k = -3; k <= 3; k++) acc += K[k + 3] * (v[Math.min(n - 1, Math.max(0, i + k))] ?? 0);
+        stops[i][1] = acc / ks;
+      }
+    }
+  };
+  soften(dark); soften(light); soften(gloss);
+  const shade = (stops, rgb) => {
+    if (!stops.some(([, a]) => a > 0.004) || yBot <= yTop) return;
+    const gr = g.createLinearGradient(0, yTop, 0, yBot);
+    for (const [at, a] of stops) gr.addColorStop(Math.min(1, Math.max(0, (at - yTop) / (yBot - yTop))), `rgba(${rgb},${a.toFixed(3)})`);
+    g.globalCompositeOperation = "source-atop";
+    g.fillStyle = gr;
+    g.fillRect(0, yTop, W, yBot - yTop);
+    g.globalCompositeOperation = "source-over";
+  };
+  shade(dark, "14,8,2");
+  shade(light, "255,244,222");
+  shade(gloss, "255,253,248");
+  return { sc, pw, ph, W, H, mx, topX, topY };
+}
+
+/* Draw strip s bent, onto ctx (in sheet px). kk: pixels per sheet px of the context's target (for the texture's sharpness). Where the strip
+   lies over another one it is see-through by density, or multiplied onto it, just as a flat strip is (see drawScene); in the rest it is opaque. */
+function drawBentStrip(ctx, scene, s, mode, kk) {
+  kk = Math.min(kk || 1, 2.5);
+  const blit = (b) => {
+    ctx.save();
+    ctx.translate(b.topX, b.topY);
+    ctx.rotate(s.rot);
+    ctx.drawImage(b.sc, 0, 0, b.pw, b.ph, -s.w / 2 - b.mx, -BENT_MARGIN_Y, b.W, b.H);
+    ctx.restore();
+  };
+  if (!s.over.length) { blit(bentScratch(scene, s, mode, kk, "opaque")); return; }
+  const m = mode === "pos" ? 0 : scene.stack;
+  // outside the shared patches: opaque
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(-1e5, -1e5, 2e5, 2e5);
+  s.over.forEach((p) => polyPath(ctx, p));
+  ctx.clip("evenodd");
+  blit(bentScratch(scene, s, mode, kk, "opaque"));
+  ctx.restore();
+  // inside them
+  if (m < 1) {
+    ctx.save();
+    ctx.beginPath();
+    s.over.forEach((p) => polyPath(ctx, p));
+    ctx.clip();
+    ctx.globalAlpha = 1 - m;
+    blit(bentScratch(scene, s, mode, kk, "alpha"));
+    ctx.restore();
+  }
+  if (m > 0) {
+    ctx.save();
+    ctx.beginPath();
+    s.over.forEach((p) => polyPath(ctx, p));
+    ctx.clip();
+    ctx.globalCompositeOperation = "multiply";
+    ctx.globalAlpha = m;
+    blit(bentScratch(scene, s, mode, kk, "mult"));
+    ctx.restore();
+  }
+}
+export { drawBentStrip };
+
+/* where a bent strip and its shadow can reach, as a box in sheet px: {x, y, w, h} */
+export function bentBounds(s, margin = 170) {
+  const q = stripQuad(s), xs = q.map((p) => p[0]), ys = q.map((p) => p[1]);
+  const x = Math.min(...xs) - margin, y = Math.min(...ys) - margin;
+  return { x, y, w: Math.max(...xs) + margin - x, h: Math.max(...ys) + margin - y };
+}
+
+/* The parts of a bent strip that are lifted off the surface (higher than minZ px), as thin world-space patches {poly, z}. Light that
+   seeps onto the film's edge, or comes up through its holes, only does so where the film lies on the light box; these patches are cut
+   out of it. */
+export function liftedPatches(s, minZ = 0.6, step = 14) {
+  const out = [];
+  if (!s.bk || (s.bk.a <= 0 && s.bk.d <= 0)) return out;
+  const bk = s.bk, top = [s.left + s.w / 2 + s.ox, s.top + s.oy], c = Math.cos(s.rot), n = Math.sin(s.rot);
+  const lo = Math.min(bk.hand, bk.pin), hi = Math.max(bk.hand, bk.pin);
+  const mx = s.w * 0.12;
+  for (let y = lo; y < hi; y += step) {
+    const y1 = Math.min(hi, y + step), p0 = profile(bk, y), p1 = profile(bk, y1), z = profile(bk, (y + y1) / 2).z;
+    if (z < minZ) continue;
+    const a = y + p0.by, b = y1 + p1.by + 0.5;
+    const toWorld = ([x, yy]) => [top[0] + x * c - yy * n, top[1] + x * n + yy * c];
+    out.push({ poly: [[-s.w / 2 - mx, a], [s.w / 2 + mx, a], [s.w / 2 + mx, b], [-s.w / 2 - mx, b]].map(toWorld), z });
+  }
   return out;
 }
 
@@ -668,6 +943,7 @@ function drawStrip(ctx, scene, s, mode, view, variant = "opaque") {
     ctx.save();
     ctx.translate(s.w / 2 + c.x, c.top + c.dy);           // the cell's own transform, about its top centre
     ctx.rotate(c.ang);
+    if (c.k !== 1) { ctx.translate(0, c.h / 2); ctx.scale(c.k, c.k); ctx.translate(0, -c.h / 2); }   // lifted or curving away: bigger or smaller about its middle
     ctx.translate(-s.w / 2, 0);
     drawCell(ctx, scene, s, c, mode, variant);
     ctx.restore();
@@ -687,6 +963,11 @@ function drawScene(ctx, scene, { mode, view }) {
       const xs = q.map((p) => p[0]), ys = q.map((p) => p[1]);
       if (Math.max(...xs) + slack < view.x0 || Math.min(...xs) - slack > view.x1 ||
           Math.max(...ys) + slack < view.y0 || Math.min(...ys) - slack > view.y1) continue;
+    }
+    if (s.bent && s.bk) {                                    // lifted by a bend, or over the rim: thin slices, in its place in the stack, over its own shadow
+      paintBendShadows(ctx, [s], scene.W, scene.H);
+      drawBentStrip(ctx, scene, s, mode, scene.drawScale);
+      continue;
     }
     if (s.over.length) {
       // Where this strip lies over another it lets light through, more where the negative is clear.

@@ -53,8 +53,8 @@ export function createBleed() {
     canvas,
     /* (re)draw if anything changed. quads: the strips' outlines. spread: how far the light reaches, sheet px.
        strength: 0 = none. Returns true if it redrew. */
-    update(W, H, quads, spread, strength) {
-      const sig = [W, H, spread, strength, ...quads.flat(2).map((v) => Math.round(v * 2))].join(",");
+    update(W, H, quads, spread, strength, cuts = []) {
+      const sig = [W, H, spread, strength, ...quads.flat(2).map((v) => Math.round(v * 2)), "c", ...cuts.flatMap((c) => [Math.round(c.z), ...c.poly.flat().map((v) => Math.round(v))])].join(",");
       if (sig === key) return false;
       key = sig;
       const mw = Math.max(2, Math.round(W * MAP_SCALE)), mh = Math.max(2, Math.round(H * MAP_SCALE));
@@ -106,6 +106,18 @@ export function createBleed() {
         g.closePath();
       }
       g.fill("nonzero");
+      // ...and not where the film is lifted off the surface (a bend): there is no board under it to catch the light, so it comes back
+      // only once the film is down again. (cuts: {poly, z} patches in sheet px, z = how high)
+      g.globalCompositeOperation = "destination-out";
+      g.fillStyle = "#000";
+      for (const c of cuts) {
+        g.globalAlpha = Math.min(1, Math.max(0, (c.z - 0.6) / 1.6));
+        g.beginPath();
+        c.poly.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y)));
+        g.closePath();
+        g.fill();
+      }
+      g.globalAlpha = 1;
       g.setTransform(1, 0, 0, 1, 0, 0);
       g.globalCompositeOperation = "source-over";
       return true;

@@ -23,7 +23,7 @@ export const GLASS_DRAG_ENABLED = false;
 const grainWindow = Float32Array.from({ length: 48 }, (_, i) => 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / 47) );
 
 /* The level of every sound, 0 to 1 (the page has a slider for each). A sound's own level sits under the master. */
-export const DEFAULT_VOLUMES = { master: 1, tick: 0.3, notch: 0.6, lift: 0.6, place: 0.15, thump: 0.6, button: 0.6, drag: 0.3, slide: 0.01, crackle: 1 };
+export const DEFAULT_VOLUMES = { master: 1, tick: 0.3, notch: 0.6, lift: 0.6, place: 0.15, thump: 0.6, button: 0.6, drag: 0.3, slide: 0.01, crackle: 0.6, wave: 0.4 };
 
 export function createSounds({ volumes = {} } = {}) {
   const vols = { ...DEFAULT_VOLUMES, ...volumes };
@@ -31,6 +31,7 @@ export function createSounds({ volumes = {} } = {}) {
   let out = null;          // master volume
   const bus = {};          // one gain per sound: tick, notch, lift, place
   let slideMaster = null;
+  let waveMaster = null;     // the single "wop" of film flexing up to a peak, or springing back
   let noise = null;
   let crackleMaster = null;
   let dragBus = null;      // speed-following level of the glass drag
@@ -87,6 +88,9 @@ export function createSounds({ volumes = {} } = {}) {
       slideMaster = ctx.createGain();
       slideMaster.gain.value = vols.slide;
       slideMaster.connect(limiter);
+      waveMaster = ctx.createGain();
+      waveMaster.gain.value = vols.wave;
+      waveMaster.connect(limiter);
       crackleMaster = ctx.createGain();
       crackleMaster.gain.value = vols.crackle;
       crackleMaster.connect(limiter);
@@ -191,7 +195,7 @@ export function createSounds({ volumes = {} } = {}) {
     /* change one sound's level (or the master) while it is playing */
     setVolume(name, v) {
       vols[name] = v;
-      const node = name === "master" ? out : name === "slide" ? slideMaster : name === "crackle" ? crackleMaster : name === "drag" ? dragMaster : bus[name];
+      const node = name === "master" ? out : name === "wave" ? waveMaster : name === "slide" ? slideMaster : name === "crackle" ? crackleMaster : name === "drag" ? dragMaster : bus[name];
       if (node) node.gain.value = v;
     },
     /* The glass edge being dragged across the board (from your recording, so only where the clip is loaded). `level`
@@ -252,6 +256,43 @@ export function createSounds({ volumes = {} } = {}) {
       }
     },
     /* how hard the eyepiece is rubbing the film, 0..1 (film.contact); call every frame, 0 when it isn't */
+    /* One "wop" for one peak: the sound a thin sheet of metal or paper makes when it flexes up and is let go, held at one end. A low swell
+       of airy rumble whose pitch bends up and comes back, with a soft body under it. kind "up": the film rising into an arch; "down": the arch
+       falling back (shorter, a little higher and lighter). k: 0..1, how hard it flexed. Nothing repeats: one call, one wop. */
+    wop(k = 0.7, kind = "up") {
+      if (vols.wave <= 0 || !ensure()) return;
+      const t = ctx.currentTime + 0.002;
+      const hard = Math.min(1, Math.max(0.05, k));                // as loud as the peak is tall
+      const up = kind === "up";
+      const dur = (up ? 0.34 : 0.22) * (0.9 + 0.2 * hard);
+      const peakAt = t + dur * (up ? 0.38 : 0.28);
+      // the air: a band of noise that rises in pitch to the peak and settles
+      const src = ctx.createBufferSource();
+      src.buffer = noise;
+      const band = ctx.createBiquadFilter();
+      band.type = "bandpass"; band.Q.value = 2;
+      const f0 = (up ? 170 : 230) * jitter(0.05);
+      band.frequency.setValueAtTime(f0, t);
+      band.frequency.exponentialRampToValueAtTime(f0 * (up ? 1.9 : 1.5), peakAt);
+      band.frequency.exponentialRampToValueAtTime(f0 * 0.85, t + dur);
+      const air = ctx.createGain();
+      envelope(air.gain, t, 0.5 * hard, dur * (up ? 0.38 : 0.28), dur * 0.62);
+      src.connect(band).connect(air).connect(waveMaster);
+      src.start(t, Math.random() * 1.5); src.stop(t + dur + 0.05);
+      // the body: a low note that swoops with it
+      const o = ctx.createOscillator();
+      o.type = "triangle";
+      const b0 = (up ? 88 : 112) * jitter(0.04);
+      o.frequency.setValueAtTime(b0, t);
+      o.frequency.exponentialRampToValueAtTime(b0 * (up ? 1.6 : 1.35), peakAt);
+      o.frequency.exponentialRampToValueAtTime(b0 * 0.9, t + dur);
+      const lp = ctx.createBiquadFilter();
+      lp.type = "lowpass"; lp.frequency.value = 300;
+      const body = ctx.createGain();
+      envelope(body.gain, t, 0.38 * hard, dur * (up ? 0.38 : 0.28), dur * 0.6);
+      o.connect(lp).connect(body).connect(waveMaster);
+      o.start(t); o.stop(t + dur + 0.05);
+    },
     slide(level01) {
       if (!slideNodes) return;                   // not unlocked yet
       const level = level01 > 0.02 ? Math.min(1, Math.pow(level01, 0.6)) : 0;

@@ -64,6 +64,11 @@ the rim picture → buttons → film → dust → light seep and lit holes → p
   (`raster.js` `holeSpots`). A lit hole has a crisp bright hole and a bloom on the film base around it.
 - **A hole only glows where the panel shows through it.** Where a strip lies over another strip there is film behind the hole, so
   no glow there; it returns as soon as the hole slides over bare board (`bleed.js` `paintHoles`, exclude patches).
+- **Film lifted off the surface gets no edge light and no lit holes.** Where a bend lifts a strip (§4.9), light can neither seep onto its
+  edge nor come up through its holes, since there is no board under it to catch the light; both come back once the film is down again
+  (`liftedPatches` in `raster.js`, cut out in `bleed.js` `update` / `paintHoles`).
+- **A hole in film that lies over (or under) another strip is just an empty hole**: it shows what is behind it and never glows, flat or bent. Each hole is
+  tested against the other strips' outlines before it is lit (`holeSpots` in `raster.js`); the overlap patches are cut out as well.
 - **Lit holes are drawn crisp** at whatever scale the picture is drawn (page, glass, magnifier), never from the low-resolution
   seep canvas.
 - A cell's film base is clipped to the cell, so a hole at a cell's end never fills in outside it (`raster.js` `drawCell`).
@@ -172,6 +177,35 @@ the rim picture → buttons → film → dust → light seep and lit holes → p
 - **Sounds**: the eyepiece being displaced makes the slide sound at a much lower speed than normal; a strip nudged along the board
   by the eyepiece or by a carried eyepiece makes the film slide sound, and the carried eyepiece rubbing film gives the crackle.
 
+### 4.9 Film is thin: it bends (`bend.js`, `film.js` `updateBend`, `raster.js` `drawBentStrip`, `paintBendShadows`)
+- **Only a lengthwise push toward the eyepiece bends film.** A strip held at one point and pushed *along its length* toward the eyepiece resting
+  on it cannot slide (the eyepiece holds that part), so it buckles: the length it cannot use becomes slack, and the slack lifts into a peak.
+  A sideways push never bends it (only the lengthwise part of a motion counts). **Pulling the film away from the eyepiece never bends it**:
+  any slack goes at once and the film just drags the eyepiece.
+- **One peak, one wave.** A bend is a single peak (never several, never two side by side). Its **wavelength follows the distance between the
+  hand and the eyepiece**, but it is shorter than that distance and sits wherever it likes within it (`placeBend`): the film either side lies
+  flat. It does not have to start at the eyepiece or end at the hand.
+- **No two bends are alike**: each strip has its own lean (where the peak sits), height, ripple, position and wavelength share, from its
+  place in the sheet (`seedBend`). The film's arc length is kept: where it lifts it also draws in lengthwise (`arcTable`, `archHeight`).
+- **The bend is smooth and has nothing to do with the picture frames**: a bent strip is drawn as thin slices, each with its own scale and
+  shift (`drawBentStrip`), not one step per frame. It is stiff, so it is one smooth bow, not a wobble.
+- **A bent strip keeps its place in the stack and obeys the same overlap rules as a flat one**: over the strips below it, under the strips above
+  it (its canvases sit in the film's stack at its own z), see-through by density or multiplied where it lies over another strip, opaque
+  elsewhere (`drawBentStrip`, `bentScratch`; `lightbox.js` `paintBend`). Its shadow falls on the strips below it, not on those above.
+- **It looks lifted and glossy (view from above)**: a lifted part looks bigger (`PERSP`). Light is from the upper left: the side of the peak
+  facing it is a little brighter, the side facing away is clearly darker, and a narrow specular sheen (the glint of a glossy surface) sits
+  where the surface mirrors the light toward the eye. All three are smooth gradients along the strip, with no seams or lines.
+- **It casts a shadow** on whatever is below it, toward the lower right, further and softer the higher the film is: close and dark where it
+  is low, far and very soft where it is high, with the sprocket holes showing as light gaps (`paintBendShadows`). It falls on neighbouring
+  strips too, and never on the bent strip itself.
+- **The stored slack pushes the eyepiece**: it builds as the hand pushes; once its push beats the eyepiece's friction the eyepiece gives way
+  along the strip, the slack is used up and the peak falls back down. The heavier the eyepiece, the later it gives way and the taller the peak
+  (`BK_K`, `BK_MU`, *Eyepiece weight*; *Bent film pushes eyepiece*, *Film bend height*). Released, the slack slides away.
+- **Sound: one "wop" per peak**, as loud as the peak is tall (`bendEvents`, `sounds.wop`): it sounds when the peak has risen to its top, and a
+  lighter one when it falls back after being let go. Never a repeating wop. Volume 0.4. The film crackle from the bend itself plays at only 0.15 of its level.
+- **Film hanging over the rim of the panel curves away**: the part past the rim looks smaller and darker the further past it is, as if bending
+  down over the edge (`overRim`; *Film curves over the rim*). It is drawn the same way, as slices.
+
 ## 5. Buttons set into the surface (`socket-buttons/`)
 
 - A button is a dark rim with a frosted ivory top and an etched icon, set into a **socket**: lit lip on the lower right, shaded
@@ -201,7 +235,7 @@ the rim picture → buttons → film → dust → light seep and lit holes → p
 - **Real recordings** of glass for lift and set-down (`audio/`); everything else synthesised. The synthesised versions are the
   fallback.
 - **Dial**: soft ticks as it turns (0.30), a distinct notch click and end-stop thud (0.60).
-- **The slide sound** (0.01) plays only while the eyepiece or a strip actually moves over the board; **film crackle** (1.0) only
+- **The slide sound** (0.01) plays only while the eyepiece or a strip actually moves over the board; **film crackle** (0.6) only
   where the eyepiece rubs film or a strip rides over another. Both are silent while the eyepiece is lifted.
 - **Lift** (0.60), **set-down** (0.15) and the **surface thump** (0.60) are three separate volumes; the thump plays alongside the
   set-down at the same moment as the landing give.

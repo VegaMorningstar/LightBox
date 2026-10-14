@@ -23,13 +23,14 @@
  * neighbour's dark film instead of the lit board). Once you grab a strip it is yours to place
  * anywhere, over or under its neighbours, until you organize the film again.
  *
- * The rules here are listed in PHYSICS.md (§3, §4.7 and §4.8); keep it in step when a rule changes.
+ * The rules here are listed in PHYSICS.md (§3, §4.7, §4.8 and §4.9); keep it in step when a rule changes.
  *
  * It only edits numbers on the scene (see raster.js) and the matching DOM transforms, so the page
  * and both glasses draw the same film.
  */
 
 import { stripQuad } from "./raster.js";
+import { archHeight, overRim, placeBend, profile, seedBend } from "./bend.js";
 
 const V0 = 0.8;               // eyepiece speed (px per ms) where the film starts to be dragged
 const V1 = 1.9;               // ...and where it is dragged fully
@@ -41,6 +42,12 @@ const RUB_STRIP = 0.01;       // how strongly a moving strip drags the one benea
 const EYE_LOAD = 0.4;         // how much a strip held under the eyepiece lags the hand: the eyepiece is heavier than the film
 const CARRY_GATE = 0.6;       // how firmly an eyepiece that is itself being carried by film still rubs the other strips under it, even when slow
 const CARRY_K = 0.007;        // per ms: how firmly a carried eyepiece drags the other strips beneath it (times the Carried slider)
+// bending: film is thin, so when it is pushed lengthwise against something that holds it (the eyepiece resting on it) it does not slide,
+// it buckles. See PHYSICS.md §4.9.
+const BK_K = 0.00004;         // acceleration the stored slack gives the eyepiece, per px of slack (divided by the eyepiece's weight)
+const BK_MU = 0.0012;         // the eyepiece's friction on the film: the acceleration it takes before it starts to move (times how much of it the strip carries)
+const BK_RELAX = 220;         // ms: how fast slack slides away once the film is let go
+const BK_MAX = 70;            // px: the tallest an arch gets
 const SLAP = 0.35;            // share of the eyepiece's speed it hands to the film under it the moment it lands
 const NUDGE_END = 0.2;        // furthest an end of a strip is swung by the eyepiece, in frame widths (the turn is limited to match)
 const SPIN_RUB = 0.9;         // how stubbornly a strip resists being turned by the eyepiece (a light rub turns it more readily than a firm grab)
@@ -75,7 +82,7 @@ const smoothstep = (a, b, x) => {
 
 const rotate = (t, x, y) => [x * Math.cos(t) - y * Math.sin(t), x * Math.sin(t) + y * Math.cos(t)];
 
-export function createFilm(scene, cfg = { push: 1, flutter: 1, rub: 0.5, eyeLoad: EYE_LOAD, carry: CARRY_GATE, slap: SLAP }) {
+export function createFilm(scene, cfg = { push: 1, flutter: 1, rub: 0.5, eyeLoad: EYE_LOAD, carry: CARRY_GATE, slap: SLAP, bend: 1, bendPush: 1, edge: 1 }) {
   let clock = 0;
   let wasActive = false;
   let contact = 0;      // 0..1: how hard the eyepiece is rubbing the film right now
@@ -86,7 +93,15 @@ export function createFilm(scene, cfg = { push: 1, flutter: 1, rub: 0.5, eyeLoad
   let moveRub = 0;      // 0..1: a moving strip is also riding over another strip
   let eyeLoad = 0;      // 0..: how much of the eyepiece lies on the strip being held, times its weight
   let zTop = 0;         // the strip last picked up sits on top
-  scene.strips.forEach((s) => s.cells.forEach((c) => { c.jx = c.jy = c.jvx = c.jvy = 0; }));
+  scene.strips.forEach((s) => {
+    s.cells.forEach((c) => { c.jx = c.jy = c.jvx = c.jvy = 0; c.by = 0; c.z = 0; c.k = 1; c.shade = 1; });
+    s.bk = { d: 0, a: 0, sign: 1, hand: 0, pin: 0, L: 1, cover: 0, hp: null };
+    seedBend(s.bk, (scene.strips.indexOf(s) + 1) * 0.6180339887 % 1);
+  });
+  let prevEye = null;
+  const eyePush = { x: 0, y: 0 };   // the acceleration (px per ms squared) the film's slack is giving the eyepiece
+  const bendEvents = [];            // single "wop"s waiting to be played: the film rising into an arch, or an arch falling back
+  let bendCrunch = 0;               // 0..1: the film is bending or springing back, for the crunch
   scene.strips.forEach((s) => { s.rot0 = s.rot; s.ax = 0; s.ay = 0; s.arot = s.rot; s.cvx = s.cvy = s.cw = 0; s.vw = 0; s.manual = false; s.z = 0; });
 
   // ---------- geometry ----------
@@ -251,6 +266,13 @@ export function createFilm(scene, cfg = { push: 1, flutter: 1, rub: 0.5, eyeLoad
     for (const s of scene.strips) {
       // Writing a style makes the browser re-check the layout, so only what actually changed is written (most strips
       // sit still while the eyepiece or one other strip moves).
+      // a bent strip, or one hanging over the rim, is drawn from a canvas instead (raster.js drawBentStrip), so the page one is hidden
+      if (!!s.bent !== !!s._bentShown) {
+        s._bentShown = !!s.bent;
+        s.el.style.visibility = s.bent ? "hidden" : "";
+        if (s.bent) { if (s.gel) s.gel.style.visibility = "hidden"; if (s.mel) s.mel.style.visibility = "hidden"; }
+        else s._clip = undefined;                         // the overlap twins re-check their visibility
+      }
       const t = `translate(${s.ox.toFixed(2)}px, ${s.oy.toFixed(2)}px) rotate(${s.rot.toFixed(5)}rad)`;
       if (s._t !== t) {
         s._t = t;
@@ -259,12 +281,15 @@ export function createFilm(scene, cfg = { push: 1, flutter: 1, rub: 0.5, eyeLoad
         if (s.mel) s.mel.style.transform = t;
       }
       for (const c of s.cells) {
-        const ct = `translate(${c.x.toFixed(2)}px, ${c.dy.toFixed(2)}px) rotate(${c.ang.toFixed(5)}rad)`;
-        if (c._t === ct) continue;
+        // a lifted or curved-away piece looks bigger or smaller about its middle, and darker as it falls away from the light
+        const ct = `translate(${c.x.toFixed(2)}px, ${(c.dy + (c.h / 2) * (1 - c.k)).toFixed(2)}px) rotate(${c.ang.toFixed(5)}rad)` + (c.k !== 1 ? ` scale(${c.k.toFixed(4)})` : "");
+        const cf = c.shade < 0.99 ? `brightness(${c.shade.toFixed(3)})` : "";
+        if (c._t === ct && c._f === cf) continue;
         c._t = ct;
         c.el.style.transform = ct;
         if (c.gel) c.gel.style.transform = ct;
         if (c.mel) c.mel.style.transform = ct;
+        if (c._f !== cf) { c._f = cf; c.el.style.filter = cf; if (c.gel) c.gel.style.filter = cf; if (c.mel) c.mel.style.filter = cf; }
       }
       // Where this strip lies over another, it is split in two: the strip itself is cut away there, and its
       // twin (the ghost) fills just that region through a filter that makes each pixel as transparent as its
@@ -281,8 +306,8 @@ export function createFilm(scene, cfg = { push: 1, flutter: 1, rub: 0.5, eyeLoad
           s._clip = key;
           s.el.style.clipPath = hole;
           // the twins fill the cut-away region: one see-through by density, one multiplied onto what is below
-          if (s.gel) { s.gel.style.clipPath = region; s.gel.style.visibility = "visible"; s.gel.style.opacity = String(1 - scene.stack); }
-          if (s.mel) { s.mel.style.clipPath = region; s.mel.style.visibility = "visible"; s.mel.style.opacity = String(scene.stack); }
+          if (s.gel) { s.gel.style.clipPath = region; s.gel.style.visibility = s.bent ? "hidden" : "visible"; s.gel.style.opacity = String(1 - scene.stack); }
+          if (s.mel) { s.mel.style.clipPath = region; s.mel.style.visibility = s.bent ? "hidden" : "visible"; s.mel.style.opacity = String(scene.stack); }
         }
       } else if (s._clip) {
         s._clip = "";
@@ -297,7 +322,7 @@ export function createFilm(scene, cfg = { push: 1, flutter: 1, rub: 0.5, eyeLoad
   function chain(s) {
     let x = 0, dy = 0;
     s.cells.forEach((c, i) => {
-      c.x = x + c.jx; c.dy = dy + c.jy;
+      c.x = x + c.jx; c.dy = dy + c.jy + c.by;
       const len = i < s.cells.length - 1 ? s.cells[i + 1].top - c.top : c.h;
       x -= len * Math.sin(c.ang);
       dy += len * (Math.cos(c.ang) - 1);
@@ -405,16 +430,20 @@ export function createFilm(scene, cfg = { push: 1, flutter: 1, rub: 0.5, eyeLoad
      edge): {n: weight under the strip, tot: total weight, sx, sy: where that patch is} */
   function coverage(s, eye) {
     const [tx, ty] = topOf(s);
-    let n = 0, tot = 0, sx = 0, sy = 0;
+    let n = 0, tot = 0, sx = 0, sy = 0, lySum = 0, lyMin = Infinity, lyMax = -Infinity;
     for (let i = -4; i <= 4; i++) for (let j = -4; j <= 4; j++) {
       if (i * i + j * j > 16) continue;
       const px = eye.x + (i * eye.radius) / 4, py = eye.y + (j * eye.radius) / 4;
       const wgt = 1 - 0.5 * Math.hypot(i, j) / 4;
       tot += wgt;
       const [lx, ly] = rotate(-s.rot, px - tx, py - ty);
-      if (Math.abs(lx) <= s.w / 2 && ly >= 0 && ly <= s.h) { n += wgt; sx += px * wgt; sy += py * wgt; }
+      if (Math.abs(lx) <= s.w / 2 && ly >= 0 && ly <= s.h) {
+        n += wgt; sx += px * wgt; sy += py * wgt; lySum += ly * wgt;
+        if (ly < lyMin) lyMin = ly;
+        if (ly > lyMax) lyMax = ly;
+      }
     }
-    return { n, tot, sx, sy };
+    return { n, tot, sx, sy, lySum, lyMin, lyMax };
   }
 
   /* measure how fast each strip's centre moved and turned since the last frame (smoothed a little) */
@@ -456,6 +485,88 @@ export function createFilm(scene, cfg = { push: 1, flutter: 1, rub: 0.5, eyeLoad
     }
   }
 
+  // ---------- bending ----------
+
+  /* A strip held at one point and pushed lengthwise toward the eyepiece resting on it cannot slide (the eyepiece holds that part of
+     it) so it buckles: the length it cannot use becomes slack, and the slack lifts into an arch (two arches if the free length is
+     long) between the hand and the eyepiece. Film is stiff, so the arch is a smooth bow, not a wobble. As it builds it pushes the
+     eyepiece; once that is enough to overcome its friction the eyepiece gives way, the slack is used up and the arch settles back
+     down. The slack is how much closer the hand has come to the eyepiece than the eyepiece has moved away: arc length is kept. */
+  function updateBend(dtMs, eye) {
+    const mass = eye.mass ?? 1, down = eye.down ?? 1;
+    const ed = prevEye ? [eye.x - prevEye.x, eye.y - prevEye.y] : [0, 0];
+    prevEye = { x: eye.x, y: eye.y };
+    eyePush.x = eyePush.y = 0;
+    let crunch = 0;
+    const edge = scene.edge;
+    for (const s of scene.strips) {
+      const bk = s.bk;
+      const isHeld = held && held.s === s;
+      const [tx, ty] = topOf(s);
+      const u = [-Math.sin(s.rot), Math.cos(s.rot)];                    // along the strip, top to bottom, on the sheet
+      let hp = null;
+      if (isHeld) { const [hx, hy] = rotate(s.rot, held.gx, held.gy); hp = [tx + hx, ty + hy]; }
+      let cov = null;
+      if (isHeld && down > 0.3) { const c = coverage(s, eye); if (c.n / c.tot > 0.12) cov = c; }
+      const dOld = bk.d, aOld = bk.a;
+      let close = 0;
+      if (cov) {
+        const sp = cov.lySum / cov.n, half = (cov.lyMax - cov.lyMin) / 2;
+        if (Math.abs(held.gy - sp) > half + 40 && bk.hp) {            // the hand is clear of the eyepiece, on one side of it
+          const sign = held.gy < sp ? 1 : -1;
+          close = sign * ((hp[0] - bk.hp[0] - ed[0]) * u[0] + (hp[1] - bk.hp[1] - ed[1]) * u[1]);
+          if (bk.d <= 0.05 || sign === bk.sign) {
+            bk.sign = sign; bk.hand = held.gy; bk.pin = sp - sign * half; bk.L = Math.max(1, Math.abs(bk.pin - bk.hand)); bk.cover = Math.min(1, cov.n / cov.tot / 0.3);
+            // pulling away from the eyepiece never bends the film: any slack goes at once, and the film just drags the eyepiece
+            bk.d = close < 0 ? Math.max(0, bk.d + close * 4) : Math.max(0, bk.d + close);
+          }
+        }
+      }
+      bk.hp = hp;
+      // slack that is not being pushed on slides away (slowly while held, quickly once let go)
+      if (!(cov && close > 0)) bk.d *= Math.exp(-dtMs / (isHeld ? 900 : BK_RELAX));
+      if (bk.d > 0 && !cov && !isHeld) bk.d = Math.max(0, bk.d + 0);   // (released: only the decay above)
+      bk.d = Math.min(bk.d, BK_MAX * 1.5, 0.35 * bk.L);
+      if (bk.d < 0.02) bk.d = 0;
+      // what the slack does to the eyepiece: it pushes it away from the hand once the push beats the eyepiece's friction
+      if (bk.d > 0.05 && bk.cover > 0 && (eye.down ?? 1) > 0.3) {
+        const acc = Math.max(0, (BK_K * (cfg.bendPush ?? 1) * bk.d) / mass - BK_MU * bk.cover);
+        eyePush.x += bk.sign * u[0] * acc; eyePush.y += bk.sign * u[1] * acc;
+        if (!isHeld) { /* the film springs back as the eyepiece gives way */ }
+      }
+      // the shape: one arch for a short free length, two for a long one; its height follows the slack (arc length is kept)
+      placeBend(bk);
+      const target = bk.d > 0 ? Math.min(BK_MAX, (cfg.bend ?? 1) * archHeight(bk.d, (bk.t1 - bk.t0) * bk.L)) : 0;
+      bk.a += (target - bk.a) * (1 - Math.exp(-dtMs / 40));
+      if (bk.a < 0.05 && target === 0) bk.a = 0;
+      // One wop for each peak, as loud as the peak is tall: it sounds when the arch has risen to its top (it stops rising, or begins to fall),
+      // and a lighter one when it falls back down after being let go (or given way to)
+      if (!bk.up && bk.a > 10) { bk.up = true; bk.sounded = false; bk.aPk = bk.a; bk.still = 0; }
+      if (bk.up) {
+        if (bk.a > bk.aPk + 0.3) { bk.aPk = bk.a; bk.still = 0; } else bk.still += dtMs;
+        if (!bk.sounded && (bk.a < bk.aPk - 3 || bk.still > 140)) { bk.sounded = true; bendEvents.push({ kind: "up", k: Math.min(1, bk.aPk / BK_MAX) }); }
+        if (bk.a < 6) {
+          if (bk.sounded && !isHeld) bendEvents.push({ kind: "down", k: Math.min(1, 0.7 * bk.aPk / BK_MAX) });
+          else if (!bk.sounded) bendEvents.push({ kind: "up", k: Math.min(1, bk.aPk / BK_MAX) });
+          bk.up = false;
+        }
+      }
+      crunch = Math.max(crunch, Math.min(1, (Math.abs(bk.a - aOld) + 0.6 * Math.abs(bk.d - dOld)) * 3 / Math.max(dtMs, 1) * 4));
+      for (const c of s.cells) {
+        const pr = profile(bk, c.top + c.h / 2);
+        c.z = pr.z; c.by = pr.by; c.k = 1; c.shade = 1;
+      }
+      // is this strip bent, or hanging over the rim of the panel? Then the page and the glasses draw it as thin slices (raster.js)
+      let rim = false;
+      if (edge && (cfg.edge ?? 1) > 0) {
+        for (const [qx, qy] of stripQuad(s)) if (overRim(qx, qy, scene.W, scene.H, edge.m) > 0.01) { rim = true; break; }
+      }
+      s.bent = bk.a > 0.8 || bk.d > 1 || rim;
+    }
+    scene.bendEdge = cfg.edge ?? 1;
+    bendCrunch = crunch;
+  }
+
   // ---------- grabbing a strip ----------
 
   /* Move a strip so the point you hold follows the pointer, as a rigid body on a board with friction.
@@ -493,7 +604,7 @@ export function createFilm(scene, cfg = { push: 1, flutter: 1, rub: 0.5, eyeLoad
       // Nothing touching the film, and the film at rest (the usual case while the eyepiece just glides about):
       // there is nothing to work out, so skip the physics for the frame.
       const stirring = gate > 0.001 || held !== null || tidying || scene.strips.some((s) =>
-        s.vx || s.vy || s.vw || s.cvx || s.cvy || s.cw || s.cells.some((c) => Math.abs(c.ang) > 0.0002 || Math.abs(c.omega) > 0.00001 || c.jvx || c.jvy || c.jx || c.jy));
+        s.vx || s.vy || s.vw || s.cvx || s.cvy || s.cw || s.bk.d || s.bk.a || s.cells.some((c) => Math.abs(c.ang) > 0.0002 || Math.abs(c.omega) > 0.00001 || c.jvx || c.jvy || c.jx || c.jy));
       if (!stirring) {
         if (wasActive) { findOverlaps(); applyDom(); wasActive = false; }
         for (const s of scene.strips) { s.pc = null; s.mv = null; }
@@ -567,7 +678,7 @@ export function createFilm(scene, cfg = { push: 1, flutter: 1, rub: 0.5, eyeLoad
         }
       }
       for (const s of scene.strips) {
-        if (Math.abs(s.vx) > 0 || Math.abs(s.vy) > 0 || Math.abs(s.vw) > 0) active = true;
+        if (Math.abs(s.vx) > 0 || Math.abs(s.vy) > 0 || Math.abs(s.vw) > 0 || s.bk.d > 0 || s.bk.a > 0 || s.bent !== !!s._bentShown) active = true;
         for (const c of s.cells) if (Math.abs(c.ang) > 0.0002 || Math.abs(c.omega) > 0.00001 || c.jx || c.jy || c.jvx || c.jvy) active = true;
       }
       // sound: a strip moving on the board slides; one riding over another also crackles
@@ -583,6 +694,7 @@ export function createFilm(scene, cfg = { push: 1, flutter: 1, rub: 0.5, eyeLoad
         // ordinary drag speeds should already crackle clearly when one strip rides over another
         if (over > 0) moveRub = Math.max(moveRub, Math.min(1, sp / 0.8) * Math.min(1, 0.5 + over * 1.5));
       }
+      updateBend(dtMs, eye);
       // a strip nudged along the board (by the eyepiece rubbing it, being carried, or another strip riding it) slides softly too
       for (const s of scene.strips) {
         if (held && held.s === s) continue;
@@ -612,7 +724,14 @@ export function createFilm(scene, cfg = { push: 1, flutter: 1, rub: 0.5, eyeLoad
         sx /= n; sy /= n;
         const rx = sx - cx, ry = sy - cy;
         const f = Math.min(1, n / tot / 0.3);                        // a strip about as wide as the eyepiece's third grips it fully
-        fSum += f; vx += (V.x - V.w * ry) * f; vy += (V.y + V.w * rx) * f;
+        let wvx = V.x - V.w * ry, wvy = V.y + V.w * rx;
+        // A held strip pushed lengthwise toward the eyepiece cannot push it: the film buckles instead (the bend then pushes the eyepiece, see
+        // updateBend). Only a pull away from it, or sideways, passes through.
+        if (held && held.s === s && s.bk.cover > 0 && s.bk.L > 1) {
+          const ux = -Math.sin(s.rot), uy = Math.cos(s.rot), vu = wvx * ux + wvy * uy;
+          if (s.bk.sign * vu > 0) { wvx -= vu * ux; wvy -= vu * uy; }
+        }
+        fSum += f; vx += wvx * f; vy += wvy * f;
       }
       return fSum > 0 ? { x: vx / fSum, y: vy / fSum, f: Math.min(1, fSum) } : { x: 0, y: 0, f: 0 };
     },
@@ -665,6 +784,13 @@ export function createFilm(scene, cfg = { push: 1, flutter: 1, rub: 0.5, eyeLoad
       }
       wasActive = true;
     },
+
+    /* the push (px per ms squared) the film's slack gives the eyepiece: read it each frame and add it to the eyepiece's velocity */
+    get eyePush() { return eyePush; },
+    /* the wops waiting to be played ({kind: "up" | "down", k}); reading them empties the list */
+    takeBendEvents() { return bendEvents.splice(0); },
+    /* the film is bending or springing back (0..1), for the crunch */
+    get bendCrunch() { return bendCrunch; },
 
     /* how hard the eyepiece is rubbing the film (0..1), for the crackle */
     get contact() { return contact; },

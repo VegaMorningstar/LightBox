@@ -15,7 +15,7 @@ import { createBleed, paintHoles } from "./bleed.js";
 import { createSocketButton, mountSocketCorner, setCovered, setPressed, ICONS } from "./socket-buttons/buttons.js";
 import { createSpecks } from "./dust.js";
 import { createFilm } from "./film.js";
-import { bakeEdge, buildFilmFilter, createLensView, createNegView, paintGlowLayer, frameQuads, holeSpots, paintOverlay, parseColor, readScene, stripQuad, warmNegatives } from "./raster.js";
+import { bakeEdge, buildFilmFilter, createLensView, createNegView, paintGlowLayer, bentBounds, drawBentStrip, frameQuads, holeSpots, liftedPatches, paintBendShadows, paintOverlay, parseColor, readScene, stripQuad, warmNegatives } from "./raster.js";
 
 const STRIP_DY = [0, 0.34, 0.12, 0.5, 0.05, 0.27];   // per-strip stagger, in frame widths
 const STRIP_ROT = [-0.3, 0.25, -0.15, 0.35, -0.25, 0.15]; // per-strip tilt, degrees
@@ -219,6 +219,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
   seepEl.className = "lb-seep";
   let edgeEl = document.createElement("canvas");         // the dark room around the lit panel, the fall of its light and the rim's highlight (bakeEdge)
   edgeEl.className = "lb-edge";
+  const bentLayers = new Map();                        // for each bent strip: its shadow and its slices, each a canvas set into the stack at the strip's own place
   const dustEl = document.createElement("canvas");    // dust on the board and film borders (kept off the photographs)
   dustEl.className = "lb-dust";
   let dustKey = "";
@@ -285,7 +286,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
   let film = null;     // friction between eyepiece, film and board
   let gripping = false;                // a film strip is being held
   let sceneRef = null;                 // the scene the glasses draw, so sliders can update it
-  const filmCfg = { push: filmDrag, flutter: filmFlutter, rub: 0.5, eyeLoad: 0.4, carry: 0.6, slap: 0.35 };   // rub: how much a strip moved over another drags the one beneath
+  const filmCfg = { push: filmDrag, flutter: filmFlutter, rub: 0.5, eyeLoad: 0.4, carry: 0.6, slap: 0.35, bend: 1, bendPush: 1, edge: 1 };   // rub: how much a strip moved over another drags the one beneath
   const eyeV = { x: 0, y: 0 };         // eyepiece velocity in px per ms, smoothed
   let fade = shadowFade;
   let lensPad = 0;
@@ -299,9 +300,10 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
   function paintSeep() {
     const sc = sceneRef;
     const quads = sc.strips.map(stripQuad);
-    seepFx.update(sc.W, sc.H, quads, spread, seep);
+    const lifted = sc.strips.flatMap((s) => (s.bent ? liftedPatches(s) : []));          // film lifted off the surface gets no edge light
+    seepFx.update(sc.W, sc.H, quads, spread, seep, lifted);
     const holes = holeSpots(sc.strips);
-    sc.holeExclude = sc.strips.flatMap((s) => s.over);       // where film lies over film, no light comes up through a hole
+    sc.holeExclude = [...sc.strips.flatMap((s) => s.over), ...lifted.filter((c) => c.z > 1.2).map((c) => c.poly)];       // where film lies over film, no light comes up through a hole
     sc.holes = holes; sc.holeQuads = quads; sc.seepSpread = spread; sc.seepStrength = seep;
     const key = [sc.W, sc.H, spread, seep, ...holes.map((h) => `${Math.round(h.x)},${Math.round(h.y)},${h.k}`), "ov", ...sc.holeExclude.flat(2).map((v) => Math.round(v))].join("|");
     if (key === holesKey) return;
@@ -315,6 +317,41 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     c.clearRect(0, 0, holesEl.width, holesEl.height);
     c.setTransform(dpr, 0, 0, dpr, 0, 0);
     paintHoles(c, holes, quads, spread, seep, null, sc.holeExclude);
+  }
+
+  // Film lifted by bending casts a shadow on the surface (see raster.js paintBendShadows)
+  function paintBend() {
+    const sc = sceneRef;
+    const dpr = overlayDpr();
+    for (const s of sc.strips) {
+      let L = bentLayers.get(s);
+      if (!s.bent) {
+        if (L) { L.shadow.remove(); L.film.remove(); bentLayers.delete(s); }
+        continue;
+      }
+      // Each bent strip is drawn into canvases that sit in the film's stack right after the strip's own (hidden) element and carry its
+      // stacking, so it keeps its place: over the strips below it, under the strips above it.
+      if (!L) {
+        L = { shadow: document.createElement("canvas"), film: document.createElement("canvas") };
+        L.shadow.className = L.film.className = "lb-bend";
+        s.el.after(L.shadow, L.film);
+        bentLayers.set(s, L);
+      }
+      const bb = bentBounds(s);
+      const z = s.z ? String(s.z) : "";
+      for (const cv of [L.shadow, L.film]) {
+        const w = Math.round(bb.w * dpr), h = Math.round(bb.h * dpr);
+        if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+        Object.assign(cv.style, { left: `${bb.x}px`, top: `${bb.y}px`, width: `${bb.w}px`, height: `${bb.h}px`, zIndex: z });
+        const c = cv.getContext("2d");
+        c.setTransform(1, 0, 0, 1, 0, 0);
+        c.clearRect(0, 0, cv.width, cv.height);
+        c.setTransform(dpr, 0, 0, dpr, -bb.x * dpr, -bb.y * dpr);
+      }
+      const sh = L.shadow.getContext("2d");
+      paintBendShadows(sh, [s], bb.w, bb.h, bb.x, bb.y);
+      drawBentStrip(L.film.getContext("2d"), sc, s, "neg", dpr);
+    }
   }
 
   // The buttons lie on the panel, so film can slide over them; a button with film over any part of it cannot be pressed (a
@@ -360,7 +397,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
   }
 
   const render = () => {
-    if (sceneRef) { paintSeep(); paintDust(); updateCovered(); }
+    if (sceneRef) { paintSeep(); paintDust(); updateCovered(); paintBend(); }
     const L = smooth(lift) * liftHeight;
     loupe.el.style.transform = `translate(${cur.x - Do / 2}px, ${cur.y - Do / 2}px) scale(${(1 + LIFT_SCALE * L).toFixed(4)})`;
     loupe.el.style.setProperty("--lift", L.toFixed(3));
@@ -488,6 +525,11 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     // that fades back in as it touches down, so a throw that lands still rubs the film as it glides.
     const touch = 1 - smooth(lift);
     const filmMoving = film ? film.step(dt, { x: cur.x, y: cur.y, vx: eyeV.x * touch, vy: eyeV.y * touch, radius: Do / 2, carried: performance.now() - carriedAt < 500, down: touch, mass: eyeMass }) : false;
+    // Film that has buckled against the eyepiece pushes it once the push beats its friction (see film.js updateBend)
+    if (film && !dragging && lift < 0.5) {
+      const ep = film.eyePush;
+      if (ep.x || ep.y) { vel.x += ep.x * dt; vel.y += ep.y * dt; coasting = true; carriedAt = performance.now(); }
+    }
     // The slide sounds whenever the eyepiece is dragged or glides across the matte board, film under it or not,
     // and it is silent while the eyepiece is lifted or standing still. It is louder the faster it moves. A film
     // strip sliding on the board slides too. The crackle is separate: it sounds only where the eyepiece rubs the
@@ -495,7 +537,8 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     // (film carrying the eyepiece moves it slowly, so it takes much less speed to be heard)
     const eyeSlide = Math.min(1, Math.hypot(eyeV.x, eyeV.y) * touch / (performance.now() - carriedAt < 500 ? 0.3 : 1.4));
     sounds.slide(Math.max(eyeSlide, film ? film.moveSlide : 0));
-    sounds.crackle(film ? Math.max(film.contact, film.moveRub) : 0, dt);
+    sounds.crackle(film ? Math.max(film.contact, film.moveRub, film.bendCrunch * 0.15) : 0, dt);     // (a bend only crackles a little: it wops)
+    if (film) for (const e of film.takeBendEvents()) sounds.wop(e.k, e.kind);        // one wop for each peak
     // The glass edge dragging across the board: only while the eyepiece is down on the surface and moving.
     sounds.glassDrag(Math.hypot(eyeV.x, eyeV.y) * touch / 1.6);
     const shaking = stepShake(dt);
@@ -563,6 +606,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
       buildSheet(photos, fw, "lb-neg"),
       ...(glass && lens ? [buildSheet(photos, fw, "lb-ghost"), buildSheet(photos, fw, "lb-mult")] : []),
     );
+    bentLayers.clear();                                  // (the old strips' canvases went with the old layout)
     stage.replaceChildren(...(cornerEl ? [cornerEl] : []), edgeEl, filmLayer, seepEl, holesEl, overlayEl, dustEl, glowEl, loupe.el);
     holesKey = "";
     dustKey = "";
@@ -679,6 +723,9 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
       { group: "Film", key: "eyeLoad", name: "Strip heavier under eyepiece", min: 0, max: 2, step: 0.05, value: filmCfg.eyeLoad, onInput: (v) => { filmCfg.eyeLoad = v; } },
       { group: "Film", key: "carry", name: "Carried eyepiece rubs strips", min: 0, max: 1.5, step: 0.05, value: filmCfg.carry, onInput: (v) => { filmCfg.carry = v; } },
       { group: "Film", key: "slap", name: "Landing drags film", min: 0, max: 1.5, step: 0.05, value: filmCfg.slap, onInput: (v) => { filmCfg.slap = v; } },
+      { group: "Film", key: "bend", name: "Film bend height", min: 0, max: 3, step: 0.05, value: filmCfg.bend, onInput: (v) => { filmCfg.bend = v; } },
+      { group: "Film", key: "bendPush", name: "Bent film pushes eyepiece", min: 0, max: 3, step: 0.05, value: filmCfg.bendPush, onInput: (v) => { filmCfg.bendPush = v; } },
+      { group: "Film", key: "edgeCurve", name: "Film curves over the rim", min: 0, max: 2, step: 0.05, value: filmCfg.edge, onInput: (v) => { filmCfg.edge = v; } },
       { group: "Film", key: "eyeMass", name: "Eyepiece weight", min: 0.2, max: 4, step: 0.05, value: eyeMass, onInput: (v) => { eyeMass = v; } },
       { group: "Film", key: "filmDragsEye", name: "Film drags eyepiece", min: 0, max: 3, step: 0.05, value: filmDragsEye, onInput: (v) => { filmDragsEye = v; } },
       { group: "Film", key: "stripRub", name: "Strip-on-strip drag", min: 0, max: 3, step: 0.05, value: filmCfg.rub, onInput: (v) => { filmCfg.rub = v; } },
@@ -691,6 +738,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
       { group: "Sound · lifting", key: "vol_place", name: "Set-down", min: 0, max: 1, step: 0.05, value: vols.place, onInput: (v) => sounds.setVolume("place", v) },
       ...(GLASS_DRAG_ENABLED ? [{ group: "Sound · sliding", key: "vol_drag", name: "Glass drag", min: 0, max: 1, step: 0.05, value: vols.drag, onInput: (v) => sounds.setVolume("drag", v) }] : []),
       { group: "Sound · sliding", key: "vol_slide", name: "Eyepiece slide", min: 0, max: 1, step: 0.01, value: vols.slide, onInput: (v) => sounds.setVolume("slide", v) },
+      { group: "Sound · sliding", key: "vol_wave", name: "Film bend wop", min: 0, max: 1, step: 0.05, value: vols.wave, onInput: (v) => sounds.setVolume("wave", v) },
       { group: "Sound · sliding", key: "vol_crackle", name: "Film crackle", min: 0, max: 1, step: 0.05, value: vols.crackle, onInput: (v) => sounds.setVolume("crackle", v) },
       { group: "Sound · interface", key: "vol_button", name: "Button click", min: 0, max: 1, step: 0.05, value: vols.button, onInput: (v) => sounds.setVolume("button", v) },
     ], { onOrganize: () => { film?.reset(); kick(); }, onButton: (phase) => { sounds.unlock(); sounds.button(phase); }, sliders });
