@@ -38,14 +38,15 @@
   /* Set into the panel, not lying on it: a narrow dark gap all round (the socket it sits in), its far lip catching the light on the
      lower right, and the near lip in shade on the upper left. The rim itself is dark on the shaded side and lit on the other. */
   --socket:
-    0 0 0 2px rgba(58, 40, 22, .5),
-    1.2px 1.8px 1.4px 2.2px rgba(255, 252, 240, .9),
-    -.8px -1px 2px 2.2px rgba(70, 48, 26, .3),
-    2px 3px 5px 2px rgba(60, 40, 20, .16);
+    0 0 2.4px 2px rgba(58, 40, 22, .5),
+    1.2px 1.8px 2.4px 2.2px rgba(255, 252, 240, .85),
+    -.8px -1px 3px 2.2px rgba(70, 48, 26, .28),
+    2px 3px 6px 2px rgba(60, 40, 20, .15);
   box-shadow:
     var(--socket),
-    inset 1px 1.2px 1.5px rgba(10, 6, 2, .6),
-    inset -.8px -1px 1px rgba(255, 225, 190, .3);
+    inset 1px 1.2px 2.4px rgba(10, 6, 2, .6),
+    inset -.8px -1px 1.8px rgba(255, 225, 190, .3),
+    inset 0 0 2px 1px rgba(10, 6, 2, .35);
   transition: box-shadow .09s ease;
 }
 .sb-button::before {                    /* the frosted ivory top of the button */
@@ -57,7 +58,7 @@
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .55 0 0 0 0 .47 0 0 0 0 .36 0 0 0 .5 -.12'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"),
     radial-gradient(circle at 36% 30%, rgba(255, 255, 255, .35), rgba(255, 255, 255, 0) 68%),
     linear-gradient(158deg, #e9e2d2 0%, #d9d0bc 60%, #c8bda6 100%);
-  box-shadow: 0 .8px 1.5px rgba(10, 6, 2, .45), inset 1px 1.2px 2px rgba(90, 64, 36, .28), inset -1px -1px 2px rgba(255, 255, 255, .45);
+  box-shadow: 0 .8px 2.2px rgba(10, 6, 2, .42), 0 0 1.6px 1px rgba(10, 6, 2, .22), inset 1px 1.2px 2.6px rgba(90, 64, 36, .28), inset -1px -1px 2.6px rgba(255, 255, 255, .45);
   transition: transform .09s ease, box-shadow .09s ease, filter .09s ease;
 }
 .sb-button::after {                     /* the frosting on the lit lip: the panel's own fine matte grain, only where the light catches it */

@@ -250,6 +250,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
   // effect on the film and makes no sliding or crackling sounds.
   let lift = 0, liftGoal = 0;
   let liftHeight = 1.25;               // how high it is lifted (a multiple of the old lift), for everything that depends on height
+  let dropCarry = 1.3;                 // how much of its speed a lifted eyepiece keeps when let go (it carries on along the way it was moving)
   let landShake = 1;                   // how hard the surface and the film shiver when the eyepiece is set down
   let shakeY = 0, shakeX = 0, shakeVY = 0, shakeVX = 0;   // the board's own shiver (a few tenths of a pixel)
   let liftTime = 200;                  // ms to reach the top; setting it down takes about half that
@@ -408,6 +409,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
   const vel = { x: 0, y: 0 };          // px per ms
   const FRICTION_MS = 330;             // time constant of the slide: bigger = glides further
   const BOUNCE = 0.3;                  // share of speed kept when hitting an edge
+  const AIR_MS = 1400;                 // time constant while the eyepiece is still in the air: almost no friction, so it keeps its line
   const MAX_SPEED = 3;                 // px per ms
   const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)");
   let coasting = false;
@@ -419,7 +421,8 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     clamp();
     if (goal.x !== nx) vel.x *= -BOUNCE;
     if (goal.y !== ny) vel.y *= -BOUNCE;
-    const f = Math.exp(-dt / FRICTION_MS);
+    // In the air (still coming down from a lift) there is almost nothing to slow it; once it touches the board, friction takes over
+    const f = Math.exp(-dt / (lift > 0.02 ? AIR_MS : FRICTION_MS));
     vel.x *= f; vel.y *= f;
     if (Math.hypot(vel.x, vel.y) < 0.02) coasting = false;
   };
@@ -430,6 +433,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     if (landShake <= 0) return;
     const k = landShake * Math.min(1.4, 0.55 + 0.35 * liftHeight);      // dropped from higher, it lands harder
     film?.thump({ x: cur.x, y: cur.y, radius: Do / 2 }, k);
+    film?.slap({ x: cur.x, y: cur.y, vx: coasting ? vel.x : eyeV.x, vy: coasting ? vel.y : eyeV.y, radius: Do / 2 }, k);   // it lands moving: it drags the film along
     shakeVY += 0.05 * k; shakeVX += 0.008 * k;
   }
   function stepShake(dt) {
@@ -643,6 +647,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
       { group: "Outer glass (PA)", key: "paCast", name: "Light and shadow on the board", min: 0, max: 2, step: 0.05, value: pa.cast, onInput: (v) => { pa.cast = v; render(); } },
       { group: "Lifting", key: "liftHeight", name: "Lift height", min: 0.5, max: 3, step: 0.05, value: liftHeight, onInput: (v) => { liftHeight = v; render(); } },
       { group: "Lifting", key: "liftTime", name: "Lift time (ms)", min: 150, max: 2500, step: 50, value: liftTime, onInput: (v) => { liftTime = v; } },
+      { group: "Lifting", key: "dropCarry", name: "Drop carry (speed kept)", min: 0, max: 3, step: 0.05, value: dropCarry, onInput: (v) => { dropCarry = v; } },
       { group: "Lifting", key: "landShake", name: "Landing shake", min: 0, max: 2, step: 0.05, value: landShake, onInput: (v) => { landShake = v; } },
       { group: "Outer glass (PA)", key: "paReflect", name: "Wall reflections", min: 0, max: 1, step: 0.05, value: pa.reflect, onInput: (v) => { pa.reflect = v; render(); } },
       { group: "Outer glass (PA)", key: "paIndex", name: "Glass index", min: 1.2, max: 2, step: 0.01, value: pa.index, onInput: (v) => { pa.index = v; render(); } },
@@ -695,7 +700,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
   const throwVelocity = () => {
     const now = performance.now();
     const last = samples[samples.length - 1];
-    if (!last || now - last.t > 60 || samples.length < 2) return { x: 0, y: 0 };
+    if (!last || now - last.t > (lift > 0.02 ? 110 : 60) || samples.length < 2) return { x: 0, y: 0 };
     const first = samples[0];
     const dt = Math.max(1, last.t - first.t);
     const vx = (last.x - first.x) / dt, vy = (last.y - first.y) / dt;
@@ -775,6 +780,9 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     kick();
     if (release === true && !reduceMotion.matches) {   // let go while moving: keep sliding
       const v = throwVelocity();
+      if (lift > 0.02) { v.x *= dropCarry; v.y *= dropCarry; }          // let go while held up: it carries on along its line as it comes down
+      const top = Math.hypot(v.x, v.y);
+      if (top > MAX_SPEED) { v.x *= MAX_SPEED / top; v.y *= MAX_SPEED / top; }
       if (Math.hypot(v.x, v.y) > 0.05) { vel.x = v.x; vel.y = v.y; coasting = true; kick(); }
     }
   }

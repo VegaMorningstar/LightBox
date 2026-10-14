@@ -1,4 +1,5 @@
 /* Liquid glass, in WebGL2: the outer glass ring (PA) and the inner lens glass (PC).
+ * The rules it follows are listed in PHYSICS.md (§4.2, §4.3, §6); keep it in step when one changes.
  *
  * Same idea as the TypeGPU "liquid glass" example: work from a signed distance, split the glass
  * into zones, and in the rim zone push the sampling position outward along the radial direction by

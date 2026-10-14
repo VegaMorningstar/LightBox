@@ -1,4 +1,5 @@
 /* Light seeping onto the film.
+ * The rules it follows are listed in PHYSICS.md (§3.2); keep it in step when one changes.
  *
  * A light box is a sheet of light under the film. Where there is no film the light comes straight up; where there
  * is, it is held back, but not at the very edge: light spills sideways in the film base and the air, so the border

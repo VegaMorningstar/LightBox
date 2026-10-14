@@ -23,6 +23,8 @@
  * neighbour's dark film instead of the lit board). Once you grab a strip it is yours to place
  * anywhere, over or under its neighbours, until you organize the film again.
  *
+ * The rules here are listed in PHYSICS.md (§3 and §4.7); keep it in step when a rule changes.
+ *
  * It only edits numbers on the scene (see raster.js) and the matching DOM transforms, so the page
  * and both glasses draw the same film.
  */
@@ -36,6 +38,7 @@ const BOARD = 0.012;          // board friction on a sliding strip, per ms
 const MAX_X = 0.14;           // furthest the eyepiece nudges a strip sideways, in frame widths
 const MAX_Y = 0.22;           // ...and along its length
 const RUB_STRIP = 0.01;       // how strongly a moving strip drags the one beneath it, per ms, where they fully overlap
+const SLAP = 0.35;            // share of the eyepiece's speed it hands to the film under it the moment it lands
 const NUDGE_END = 0.2;        // furthest an end of a strip is swung by the eyepiece, in frame widths (the turn is limited to match)
 const SPIN_RUB = 0.9;         // how stubbornly a strip resists being turned by the eyepiece (a light rub turns it more readily than a firm grab)
 const NUDGE_TURN = 0.06;      // ...and never more than this many radians
@@ -547,6 +550,36 @@ export function createFilm(scene, cfg = { push: 1, flutter: 1, rub: 0.5 }) {
       wasActive = active;
       contact = contactNow;
       return active;
+    },
+
+    /* The eyepiece lands while moving (eye = {x, y, vx, vy, radius}): it drags the film beneath along its line the moment it touches,
+       whatever its speed, as a rub at speed would. The strips under it get a push and a turn at the point it lands, and their pieces
+       lean into the S-bend. strength: 0 = none, 1 = the usual. */
+    slap(eye, strength = 1) {
+      if (strength <= 0 || Math.hypot(eye.vx, eye.vy) < 0.05) return;
+      for (const s of scene.strips) {
+        const n = s.cells.length;
+        const w = s.cells.map((c) => {
+          const cx = s.left + s.w / 2 + s.ox + c.x, cy = s.top + s.oy + c.top + c.h / 2 + c.dy;
+          const t = Math.max(0, 1 - Math.hypot(eye.x - cx, eye.y - cy) / (eye.radius + c.h * 0.5));
+          return t * t;
+        });
+        const under = Math.min(1, w.reduce((a, b) => a + b, 0) * 0.8);
+        if (under < 0.02) continue;
+        const [tx, ty] = topOf(s);
+        const [lx, ly] = rotate(-s.rot, eye.x - tx, eye.y - ty);
+        const gx = Math.max(-s.w / 2, Math.min(s.w / 2, lx)), gy = Math.max(0, Math.min(s.h, ly));
+        const [rx, ry] = rotate(s.rot, gx, gy - s.h / 2);
+        const J = (SPIN_RUB * s.h * s.h) / 12;
+        const K = SLAP * strength * under * cfg.push;
+        const fx = K * (eye.vx - (s.vx - s.vw * ry)), fy = K * (eye.vy - (s.vy + s.vw * rx));
+        s.vx += fx; s.vy += fy; s.vw += (rx * fy - ry * fx) / J;
+        s.cells.forEach((c, i) => {
+          const slope = (w[Math.min(n - 1, i + 1)] - w[Math.max(0, i - 1)]) / 2;
+          c.omega += -BEND * cfg.flutter * eye.vx * slope * 70 * strength;
+        });
+      }
+      wasActive = true;
     },
 
     /* the eyepiece has just been set down at eye = {x, y, radius}: the film directly under it gets a quick shiver, strongest in the

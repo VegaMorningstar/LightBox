@@ -7,6 +7,11 @@ A contact sheet of film negatives lying on a light box. Slide the eyepiece over 
 - **Push the eyepiece against the top or bottom edge** of the window while dragging and the page scrolls; the harder you push, the faster.
 - **Grab a film strip** to move it; the **Organize** button puts the film back.
 
+## The rules
+
+`PHYSICS.md` lists every rule the page follows (how light, glass, film and the buttons behave with each other), with the file each
+lives in. A new rule is documented there and in the code beside it.
+
 ## Run it
 
 ```sh
