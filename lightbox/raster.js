@@ -397,7 +397,7 @@ export function paintBendShadows(ctx, strips, W, H, x0 = 0, y0 = 0) {
     // where the film is higher or lower, and the scaling-up blurs the steps away.
     const ribbon = (zMin) => {
       const L = [], R = [];
-      for (let y = lo; y <= hi + 0.01; y += 5) {
+      for (let y = lo; y <= hi + 0.01; y += 1.5) {
         const p = profile(bk, y);
         if (p.z < zMin) { if (L.length) break; else continue; }
         const ox = p.z * 0.85, oy = p.z * 1.15, yy = y + p.by;
@@ -493,7 +493,8 @@ function bentScratch(scene, s, mode, kk, variant) {
   g.setTransform(kk, 0, 0, kk, 0, 0);
   g.imageSmoothingEnabled = true;
   const bk = s.bk;
-  const N = Math.max(10, Math.ceil(s.h / 8));
+  const SLICE = 1.5;                                                        // each slice is about a pixel and a half of film: far finer than the eye can pick out
+  const N = Math.min(900, Math.max(40, Math.ceil(s.h / SLICE)));
   const topX = s.left + s.w / 2 + s.ox, topY = s.top + s.oy, ce = Math.cos(s.rot), se = Math.sin(s.rot);
   const edge = scene.edge, edgeK = scene.bendEdge ?? 1;
   const oAt = (y) => {
@@ -523,12 +524,12 @@ function bentScratch(scene, s, mode, kk, variant) {
   // Blend each lighting curve into itself over a short distance either side, so where the peak begins and ends the highlight and the shadow
   // fade out gently into the flat film instead of stopping.
   const soften = (stops) => {
-    const K = [1, 2, 3, 4, 3, 2, 1], ks = 16, n = stops.length;
+    const K = [1, 2, 3, 4, 3, 2, 1], ks = 16, n = stops.length, st = Math.max(1, Math.round(8 / (s.h / N)));      // (taps spaced so the blend still spans the same length of film)
     for (let pass = 0; pass < 2; pass++) {
       const v = stops.map(([, a]) => a);
       for (let i = 0; i < n; i++) {
         let acc = 0;
-        for (let k = -3; k <= 3; k++) acc += K[k + 3] * (v[Math.min(n - 1, Math.max(0, i + k))] ?? 0);
+        for (let k = -3; k <= 3; k++) acc += K[k + 3] * (v[Math.min(n - 1, Math.max(0, i + k * st))] ?? 0);
         stops[i][1] = acc / ks;
       }
     }
@@ -603,7 +604,7 @@ export function bentBounds(s, margin = 170) {
 /* The parts of a bent strip that are lifted off the surface (higher than minZ px), as thin world-space patches {poly, z}. Light that
    seeps onto the film's edge, or comes up through its holes, only does so where the film lies on the light box; these patches are cut
    out of it. */
-export function liftedPatches(s, minZ = 0.6, step = 14) {
+export function liftedPatches(s, minZ = 0.6, step = 3) {
   const out = [];
   if (!s.bk || (s.bk.a <= 0 && s.bk.d <= 0)) return out;
   const bk = s.bk, top = [s.left + s.w / 2 + s.ox, s.top + s.oy], c = Math.cos(s.rot), n = Math.sin(s.rot);

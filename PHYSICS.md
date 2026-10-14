@@ -191,8 +191,9 @@ the rim picture → buttons → film → dust → light seep and lit holes → p
   pushes the eyepiece as before. Past one picture the bend eases in over the next third of a picture (`bk.can`, `grow` in `film.js` `updateBend`).
 - **No two bends are alike**: each strip has its own lean (where the peak sits), height, ripple, position and wavelength share, from its
   place in the sheet (`seedBend`). The film's arc length is kept: where it lifts it also draws in lengthwise (`arcTable`, `archHeight`).
-- **The bend is smooth and has nothing to do with the picture frames**: a bent strip is drawn as thin slices, each with its own scale and
-  shift (`drawBentStrip`), not one step per frame. It is stiff, so it is one smooth bow, not a wobble.
+- **The bend is smooth and has nothing to do with the picture frames**: a bent strip is drawn as very thin slices (about a pixel and a
+  half of film each, `SLICE` in `raster.js`), each with its own scale and shift (`drawBentStrip`), so it reads as one continuous strip, never as pieces. The shadow
+  outline and the light cut-outs for lit holes are stepped as finely. It is stiff, so it is one smooth bow, not a wobble.
 - **A bent strip keeps its place in the stack and obeys the same overlap rules as a flat one**: over the strips below it, under the strips above
   it (its canvases sit in the film's stack at its own z), see-through by density or multiplied where it lies over another strip, opaque
   elsewhere (`drawBentStrip`, `bentScratch`; `lightbox.js` `paintBend`). Its shadow falls on the strips below it, not on those above.
