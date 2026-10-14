@@ -64,9 +64,9 @@ the rim picture → buttons → film → dust → light seep and lit holes → p
   (`raster.js` `holeSpots`). A lit hole has a crisp bright hole and a bloom on the film base around it.
 - **A hole only glows where the panel shows through it.** Where a strip lies over another strip there is film behind the hole, so
   no glow there; it returns as soon as the hole slides over bare board (`bleed.js` `paintHoles`, exclude patches).
-- **Film lifted off the surface gets no edge light and no lit holes.** Where a bend lifts a strip (§4.9), light can neither seep onto its
-  edge nor come up through its holes, since there is no board under it to catch the light; both come back once the film is down again
-  (`liftedPatches` in `raster.js`, cut out in `bleed.js` `update` / `paintHoles`).
+- **Film lifted off the surface gets no edge light and no lit holes.** Where a bend lifts a strip (§4.9), light can neither seep onto its edge nor come up through its holes, since
+  there is no board under it to catch the light. The seep is cut out softly along each lifted run (one polygon per run, blurred, so it fades as the film rises) and each hole's glow fades
+  with its own film's height (`liftedPatches`, `holeSpots` in `raster.js`; `bleed.js`); both come back once the film is down again.
 - **A hole in film that lies over (or under) another strip is just an empty hole**: it shows what is behind it and never glows, flat or bent. Each hole is
   tested against the other strips' outlines before it is lit (`holeSpots` in `raster.js`); the overlap patches are cut out as well.
 - **Lit holes are drawn crisp** at whatever scale the picture is drawn (page, glass, magnifier), never from the low-resolution
@@ -194,9 +194,11 @@ the rim picture → buttons → film → dust → light seep and lit holes → p
 - **The bend is smooth and has nothing to do with the picture frames**: a bent strip is drawn as very thin slices (half a pixel of film
   each, `SLICE` in `raster.js`), each with its own scale and shift (`drawBentStrip`), so it reads as one continuous strip, never as pieces. The shadow
   outline and the light cut-outs for lit holes are stepped as finely. It is stiff, so it is one smooth bow, not a wobble.
-- **Where a bent strip lies over film, each slice blends with the film beneath it exactly as flat film does** (multiplied, or faded by density), on the page as well as
-  in the glasses. On the page it is drawn into three canvases (opaque, faded, multiplied) so the multiply happens against the film in the page; as a slice comes
-  down to the ground it therefore already looks like flat film, and there is no change of look when the bend ends (`drawBentStrip` `parts`; `lightbox.js` `paintBend`).
+- **A bent strip is cut from a snapshot of itself and the film under it.** At rest the strip is drawn together with the strips beneath it, composited as they really are
+  (multiplied or faded onto the film below, with that film showing through the sprocket holes), into one opaque picture; the slices are cut from that picture and the
+  highlight and shadow are laid on the slices. So nothing underneath can show through the shading, and a slice that comes down to the ground already looks exactly as flat
+  film does, with no change of look when the bend ends. Bare board is left out of the snapshot, so the board and its shadows still show through holes over it
+  (`snapshot` in `raster.js`; rebuilt whenever the strip or the film under it moves).
 - **A bent strip keeps its place in the stack and obeys the same overlap rules as a flat one**: over the strips below it, under the strips above
   it (its canvases sit in the film's stack at its own z), see-through by density or multiplied where it lies over another strip, opaque
   elsewhere (`drawBentStrip`, `bentScratch`; `lightbox.js` `paintBend`). Its shadow falls on the strips below it, not on those above.

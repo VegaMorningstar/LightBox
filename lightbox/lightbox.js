@@ -305,7 +305,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     const lifted = sc.strips.flatMap((s) => (s.bent ? liftedPatches(s) : []));          // film lifted off the surface gets no edge light
     seepFx.update(sc.W, sc.H, quads, spread, seep, lifted);
     const holes = holeSpots(sc.strips);
-    sc.holeExclude = [...sc.strips.flatMap((s) => s.over), ...lifted.filter((c) => c.z > 1.2).map((c) => c.poly)];       // where film lies over film, no light comes up through a hole
+    sc.holeExclude = sc.strips.flatMap((s) => s.over);       // where film lies over film, no light comes up through a hole
     sc.holes = holes; sc.holeQuads = quads; sc.seepSpread = spread; sc.seepStrength = seep;
     const key = [sc.W, sc.H, spread, seep, ...holes.map((h) => `${Math.round(h.x)},${Math.round(h.y)},${h.k}`), "ov", ...sc.holeExclude.flat(2).map((v) => Math.round(v))].join("|");
     if (key === holesKey) return;
@@ -328,20 +328,20 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     for (const s of sc.strips) {
       let L = bentLayers.get(s);
       if (!s.bent) {
-        if (L) { L.shadow.remove(); L.film.remove(); L.alpha.remove(); L.mult.remove(); bentLayers.delete(s); }
+        if (L) { L.shadow.remove(); L.film.remove(); bentLayers.delete(s); }
         continue;
       }
       // Each bent strip is drawn into canvases that sit in the film's stack right after the strip's own (hidden) element and carry its
       // stacking, so it keeps its place: over the strips below it, under the strips above it.
       if (!L) {
-        L = { shadow: document.createElement("canvas"), film: document.createElement("canvas"), alpha: document.createElement("canvas"), mult: document.createElement("canvas") };
-        L.shadow.className = L.film.className = L.alpha.className = L.mult.className = "lb-bend";
-        s.el.after(L.shadow, L.film, L.alpha, L.mult);
+        L = { shadow: document.createElement("canvas"), film: document.createElement("canvas") };
+        L.shadow.className = L.film.className = "lb-bend";
+        s.el.after(L.shadow, L.film);
         bentLayers.set(s, L);
       }
       const bb = bentBounds(s);
       const z = s.z ? String(s.z) : "";
-      for (const cv of [L.shadow, L.film, L.alpha, L.mult]) {
+      for (const cv of [L.shadow, L.film]) {
         const w = Math.round(bb.w * dpr), h = Math.round(bb.h * dpr);
         if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
         Object.assign(cv.style, { left: `${bb.x}px`, top: `${bb.y}px`, width: `${bb.w}px`, height: `${bb.h}px`, zIndex: z });
@@ -350,13 +350,9 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
         c.clearRect(0, 0, cv.width, cv.height);
         c.setTransform(dpr, 0, 0, dpr, -bb.x * dpr, -bb.y * dpr);
       }
-      // where this strip lies over another, the page blends it as it blends a flat one: faded by density, and/or multiplied onto the film below
-      L.alpha.style.opacity = String(1 - sc.stack);
-      L.mult.style.opacity = String(sc.stack);
-      L.mult.style.mixBlendMode = "multiply";
       const sh = L.shadow.getContext("2d");
       paintBendShadows(sh, [s], bb.w, bb.h, bb.x, bb.y);
-      drawBentStrip(null, sc, s, "neg", dpr, { opaque: L.film.getContext("2d"), alpha: L.alpha.getContext("2d"), mult: L.mult.getContext("2d") });
+      drawBentStrip(L.film.getContext("2d"), sc, s, "neg", dpr);
     }
   }
 

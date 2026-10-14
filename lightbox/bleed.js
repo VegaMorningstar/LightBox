@@ -110,14 +110,14 @@ export function createBleed() {
       // only once the film is down again. (cuts: {poly, z} patches in sheet px, z = how high)
       g.globalCompositeOperation = "destination-out";
       g.fillStyle = "#000";
+      g.filter = "blur(2px)";                                     // a soft edge: the glow fades out as the film lifts, it does not stop at a line
       for (const c of cuts) {
-        g.globalAlpha = Math.min(1, Math.max(0, (c.z - 0.6) / 1.6));
         g.beginPath();
         c.poly.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y)));
         g.closePath();
         g.fill();
       }
-      g.globalAlpha = 1;
+      g.filter = "none";
       g.setTransform(1, 0, 0, 1, 0, 0);
       g.globalCompositeOperation = "source-over";
       return true;
