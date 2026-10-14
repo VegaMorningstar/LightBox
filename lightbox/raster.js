@@ -551,45 +551,39 @@ function bentScratch(scene, s, mode, kk, variant) {
 }
 
 /* Draw strip s bent, onto ctx (in sheet px). kk: pixels per sheet px of the context's target (for the texture's sharpness). Where the strip
-   lies over another one it is see-through by density, or multiplied onto it, just as a flat strip is (see drawScene); in the rest it is opaque. */
-function drawBentStrip(ctx, scene, s, mode, kk) {
+   lies over another one it is see-through by density, or multiplied onto it, just as a flat strip is (see drawScene); in the rest it is opaque.
+   On the page the strip is drawn into three canvases (parts: {opaque, alpha, mult}), because a multiply has to happen against the film
+   underneath, which lies in the page and not in the canvas: the page blends the `mult` canvas by multiplying and fades the `alpha` one. In
+   the glasses everything is drawn into one canvas (no parts) and blends there. Either way each slice lies exactly as the film beneath
+   dictates, so a slice that comes down to the ground looks just like flat film does. */
+function drawBentStrip(ctx, scene, s, mode, kk, parts = null) {
   kk = Math.min(kk || 1, 2.5);
-  const blit = (b) => {
-    ctx.save();
-    ctx.translate(b.topX, b.topY);
-    ctx.rotate(s.rot);
-    ctx.drawImage(b.sc, 0, 0, b.pw, b.ph, -s.w / 2 - b.mx, -BENT_MARGIN_Y, b.W, b.H);
-    ctx.restore();
+  const blit = (c, b) => {
+    c.save();
+    c.translate(b.topX, b.topY);
+    c.rotate(s.rot);
+    c.drawImage(b.sc, 0, 0, b.pw, b.ph, -s.w / 2 - b.mx, -BENT_MARGIN_Y, b.W, b.H);
+    c.restore();
   };
-  if (!s.over.length) { blit(bentScratch(scene, s, mode, kk, "opaque")); return; }
+  const outsideOver = (c) => { c.beginPath(); c.rect(-1e5, -1e5, 2e5, 2e5); s.over.forEach((p) => polyPath(c, p)); c.clip("evenodd"); };
+  const insideOver = (c) => { c.beginPath(); s.over.forEach((p) => polyPath(c, p)); c.clip(); };
+  if (!s.over.length) { blit(parts ? parts.opaque : ctx, bentScratch(scene, s, mode, kk, "opaque")); return; }
   const m = mode === "pos" ? 0 : scene.stack;
-  // outside the shared patches: opaque
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(-1e5, -1e5, 2e5, 2e5);
-  s.over.forEach((p) => polyPath(ctx, p));
-  ctx.clip("evenodd");
-  blit(bentScratch(scene, s, mode, kk, "opaque"));
-  ctx.restore();
-  // inside them
+  const o = parts ? parts.opaque : ctx;
+  o.save(); outsideOver(o); blit(o, bentScratch(scene, s, mode, kk, "opaque")); o.restore();
   if (m < 1) {
-    ctx.save();
-    ctx.beginPath();
-    s.over.forEach((p) => polyPath(ctx, p));
-    ctx.clip();
-    ctx.globalAlpha = 1 - m;
-    blit(bentScratch(scene, s, mode, kk, "alpha"));
-    ctx.restore();
+    const c = parts ? parts.alpha : ctx;
+    c.save(); insideOver(c);
+    if (!parts) c.globalAlpha = 1 - m;
+    blit(c, bentScratch(scene, s, mode, kk, "alpha"));
+    c.restore();
   }
   if (m > 0) {
-    ctx.save();
-    ctx.beginPath();
-    s.over.forEach((p) => polyPath(ctx, p));
-    ctx.clip();
-    ctx.globalCompositeOperation = "multiply";
-    ctx.globalAlpha = m;
-    blit(bentScratch(scene, s, mode, kk, "mult"));
-    ctx.restore();
+    const c = parts ? parts.mult : ctx;
+    c.save(); insideOver(c);
+    if (!parts) { c.globalCompositeOperation = "multiply"; c.globalAlpha = m; }
+    blit(c, bentScratch(scene, s, mode, kk, "mult"));
+    c.restore();
   }
 }
 export { drawBentStrip };
