@@ -36,7 +36,7 @@ function marks() {
       const a = ((-SWEEP + (2 * SWEEP * i) / STEPS) * Math.PI) / 180, major = i === 0 || i === STEPS || i === STEPS / 2;
       const r0 = 41.5, r1 = major ? 47.5 : 44.5;
       return `<line x1="${(Math.sin(a) * r0).toFixed(2)}" y1="${(-Math.cos(a) * r0).toFixed(2)}" x2="${(Math.sin(a) * r1).toFixed(2)}" y2="${(-Math.cos(a) * r1).toFixed(2)}" stroke-width="${major ? 1.5 : 1}"/>`;
-    }).join("") + `<text x="-33" y="44" text-anchor="middle">−</text><text x="33" y="44" text-anchor="middle">+</text></svg>`;
+    }).join("") + `<g class="sb-knob-sign"><path d="M-40 47.5h8"/><path d="M32 47.5h8M36 43.5v8"/></g></svg>`;
   return svg;
 }
 
