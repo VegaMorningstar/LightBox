@@ -158,6 +158,20 @@ the rim picture → buttons → film → dust → light seep and lit holes → p
 - **Landing while moving drags the film** under it along its line the moment it touches down (whatever its speed): a push and a
   turn at the contact point and an S-lean of the film pieces (`SLAP`).
 
+### 4.8 The eyepiece is heavier than the film (`film.js` `dragOnEye`, `coverage`; `lightbox.js` `tick`)
+- **Film moved under the eyepiece drags it along** by friction (not while it is lifted, and not while you are holding it). The
+  pull acts at the patch of film under the eyepiece: the strip's own velocity there (its slide plus the swing of its turn, so the
+  top and bottom of one strip drag differently), counted more toward the middle of the eyepiece and by how much of the eyepiece the
+  strip covers. A strip that is not moving, or not under it, does nothing. (*Film drags eyepiece*, *Eyepiece weight*)
+- **The eyepiece has inertia.** It is heavy, so it takes a while to pick up the film's speed and keeps going a little after
+  (the heavier, the less it moves). *Eyepiece weight* scales this.
+- **A strip held down under the eyepiece is slightly harder to drag**: it lags the hand a little, more the more of the eyepiece it
+  carries (`EYE_LOAD`; *Strip heavier under eyepiece*).
+- **A carried eyepiece still rubs the other strips under it**, a little, however slowly it moves: strip A moves the eyepiece, the
+  eyepiece moves strip B (`CARRY_K`, `CARRY_GATE`; *Carried eyepiece rubs strips*).
+- **Sounds**: the eyepiece being displaced makes the slide sound at a much lower speed than normal; a strip nudged along the board
+  by the eyepiece or by a carried eyepiece makes the film slide sound, and the carried eyepiece rubbing film gives the crackle.
+
 ## 5. Buttons set into the surface (`socket-buttons/`)
 
 - A button is a dark rim with a frosted ivory top and an etched icon, set into a **socket**: lit lip on the lower right, shaded

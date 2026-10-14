@@ -23,7 +23,7 @@
  * neighbour's dark film instead of the lit board). Once you grab a strip it is yours to place
  * anywhere, over or under its neighbours, until you organize the film again.
  *
- * The rules here are listed in PHYSICS.md (§3 and §4.7); keep it in step when a rule changes.
+ * The rules here are listed in PHYSICS.md (§3, §4.7 and §4.8); keep it in step when a rule changes.
  *
  * It only edits numbers on the scene (see raster.js) and the matching DOM transforms, so the page
  * and both glasses draw the same film.
@@ -38,6 +38,9 @@ const BOARD = 0.012;          // board friction on a sliding strip, per ms
 const MAX_X = 0.14;           // furthest the eyepiece nudges a strip sideways, in frame widths
 const MAX_Y = 0.22;           // ...and along its length
 const RUB_STRIP = 0.01;       // how strongly a moving strip drags the one beneath it, per ms, where they fully overlap
+const EYE_LOAD = 0.4;         // how much a strip held under the eyepiece lags the hand: the eyepiece is heavier than the film
+const CARRY_GATE = 0.6;       // how firmly an eyepiece that is itself being carried by film still rubs the other strips under it, even when slow
+const CARRY_K = 0.007;        // per ms: how firmly a carried eyepiece drags the other strips beneath it (times the Carried slider)
 const SLAP = 0.35;            // share of the eyepiece's speed it hands to the film under it the moment it lands
 const NUDGE_END = 0.2;        // furthest an end of a strip is swung by the eyepiece, in frame widths (the turn is limited to match)
 const SPIN_RUB = 0.9;         // how stubbornly a strip resists being turned by the eyepiece (a light rub turns it more readily than a firm grab)
@@ -72,7 +75,7 @@ const smoothstep = (a, b, x) => {
 
 const rotate = (t, x, y) => [x * Math.cos(t) - y * Math.sin(t), x * Math.sin(t) + y * Math.cos(t)];
 
-export function createFilm(scene, cfg = { push: 1, flutter: 1, rub: 0.5 }) {
+export function createFilm(scene, cfg = { push: 1, flutter: 1, rub: 0.5, eyeLoad: EYE_LOAD, carry: CARRY_GATE, slap: SLAP }) {
   let clock = 0;
   let wasActive = false;
   let contact = 0;      // 0..1: how hard the eyepiece is rubbing the film right now
@@ -81,6 +84,7 @@ export function createFilm(scene, cfg = { push: 1, flutter: 1, rub: 0.5 }) {
   let tidying = false;
   let moveSlide = 0;    // 0..1: a strip is sliding on the board (held, or gliding after a throw)
   let moveRub = 0;      // 0..1: a moving strip is also riding over another strip
+  let eyeLoad = 0;      // 0..: how much of the eyepiece lies on the strip being held, times its weight
   let zTop = 0;         // the strip last picked up sits on top
   scene.strips.forEach((s) => s.cells.forEach((c) => { c.jx = c.jy = c.jvx = c.jvy = 0; }));
   scene.strips.forEach((s) => { s.rot0 = s.rot; s.ax = 0; s.ay = 0; s.arot = s.rot; s.cvx = s.cvy = s.cw = 0; s.vw = 0; s.manual = false; s.z = 0; });
@@ -327,7 +331,9 @@ export function createFilm(scene, cfg = { push: 1, flutter: 1, rub: 0.5 }) {
       const [crx, cry] = rotate(s.rot, gx, gy - s.h / 2);       // from the strip's centre to the point under the eyepiece
       const J = (SPIN_RUB * s.h * s.h) / 12;
       const [cx0, cy0] = centreOf(s);
-      const pushes = [{ rx: crx, ry: cry, vx: eye.vx, vy: eye.vy, k: PUSH * gate * under * cfg.push }];
+      // An eyepiece that film is carrying along also drags the other strips under it, a little, however slowly it goes
+      const kEye = Math.max(PUSH * gate * under * cfg.push, eye.carried ? CARRY_K * (cfg.carry ?? CARRY_GATE) * under : 0);
+      const pushes = [{ rx: crx, ry: cry, vx: eye.vx, vy: eye.vy, k: kEye }];
       for (const d of s.drives ?? []) pushes.push({ rx: d.px - cx0, ry: d.py - cy0, vx: d.vx, vy: d.vy, k: d.k });
       let fx = 0, fy = 0, tq = 0;
       for (const p of pushes) {
@@ -390,13 +396,39 @@ export function createFilm(scene, cfg = { push: 1, flutter: 1, rub: 0.5 }) {
 
   /* How fast a strip is being moved by hand or by its glide: {x, y, w} in px and rad per ms (0 when it is not). */
   function moverVelocity(s) {
-    if (held && held.s === s) {
-      const sp = Math.hypot(held.v.x, held.v.y) + Math.abs(held.v.w) * s.h * 0.25;
-      const f = sp > 1e-6 ? Math.min(1, held.speed / sp) : 0;          // a held strip that has stopped is not rubbing
-      return { x: held.v.x * f, y: held.v.y * f, w: held.v.w * f };
-    }
-    if (s.cvx || s.cvy || s.cw) return { x: s.cvx, y: s.cvy, w: s.cw };
+    // what the strip is really doing on screen, measured frame to frame (it includes the turn), for a strip that is held or gliding
+    if ((held && held.s === s) || s.cvx || s.cvy || s.cw) return s.mv && (s.mv.x || s.mv.y || s.mv.w) ? s.mv : null;
     return null;
+  }
+
+  /* how much of the eyepiece's disc a strip lies under, weighted toward the middle of the eyepiece (which holds the film more than its
+     edge): {n: weight under the strip, tot: total weight, sx, sy: where that patch is} */
+  function coverage(s, eye) {
+    const [tx, ty] = topOf(s);
+    let n = 0, tot = 0, sx = 0, sy = 0;
+    for (let i = -4; i <= 4; i++) for (let j = -4; j <= 4; j++) {
+      if (i * i + j * j > 16) continue;
+      const px = eye.x + (i * eye.radius) / 4, py = eye.y + (j * eye.radius) / 4;
+      const wgt = 1 - 0.5 * Math.hypot(i, j) / 4;
+      tot += wgt;
+      const [lx, ly] = rotate(-s.rot, px - tx, py - ty);
+      if (Math.abs(lx) <= s.w / 2 && ly >= 0 && ly <= s.h) { n += wgt; sx += px * wgt; sy += py * wgt; }
+    }
+    return { n, tot, sx, sy };
+  }
+
+  /* measure how fast each strip's centre moved and turned since the last frame (smoothed a little) */
+  function measureMotion(dtMs) {
+    for (const s of scene.strips) {
+      const [cx, cy] = centreOf(s);
+      if (s.pc && dtMs > 0) {
+        const a = 0.5;
+        const vx = (cx - s.pc[0]) / dtMs, vy = (cy - s.pc[1]) / dtMs, vw = (s.rot - s.pc[2]) / dtMs;
+        s.mv = s.mv ?? { x: 0, y: 0, w: 0 };
+        s.mv.x += (vx - s.mv.x) * a; s.mv.y += (vy - s.mv.y) * a; s.mv.w += (vw - s.mv.w) * a;
+      }
+      s.pc = [cx, cy, s.rot];
+    }
   }
 
   /* A strip being moved over another one drags it along by friction where they overlap: the push acts at the middle of the shared
@@ -453,13 +485,18 @@ export function createFilm(scene, cfg = { push: 1, flutter: 1, rub: 0.5 }) {
     /* eye: {x, y, vx, vy, radius} in sheet px and px per ms. Returns true while anything is still moving. */
     step(dtMs, eye) {
       const speed = Math.hypot(eye.vx, eye.vy);
-      const gate = smoothstep(V0, V1, speed);
+      let gate = smoothstep(V0, V1, speed);
+      // An eyepiece that film is carrying (slowly: it is heavy) still rubs the other strips under it, a little
+      if (eye.carried) gate = Math.max(gate, (cfg.carry ?? CARRY_GATE) * smoothstep(0.03, 0.2, speed));
+      // A strip held down under the eyepiece is harder to drag: the eyepiece rests on it
+      if (held && eye.down > 0.01) { const c = coverage(held.s, eye); eyeLoad = Math.min(1, c.n / c.tot / 0.3) * (eye.mass ?? 1) * eye.down; } else eyeLoad = 0;
       // Nothing touching the film, and the film at rest (the usual case while the eyepiece just glides about):
       // there is nothing to work out, so skip the physics for the frame.
       const stirring = gate > 0.001 || held !== null || tidying || scene.strips.some((s) =>
         s.vx || s.vy || s.vw || s.cvx || s.cvy || s.cw || s.cells.some((c) => Math.abs(c.ang) > 0.0002 || Math.abs(c.omega) > 0.00001 || c.jvx || c.jvy || c.jx || c.jy));
       if (!stirring) {
         if (wasActive) { findOverlaps(); applyDom(); wasActive = false; }
+        for (const s of scene.strips) { s.pc = null; s.mv = null; }
         contact = 0; moveSlide = moveRub = 0;
         return false;
       }
@@ -546,10 +583,38 @@ export function createFilm(scene, cfg = { push: 1, flutter: 1, rub: 0.5 }) {
         // ordinary drag speeds should already crackle clearly when one strip rides over another
         if (over > 0) moveRub = Math.max(moveRub, Math.min(1, sp / 0.8) * Math.min(1, 0.5 + over * 1.5));
       }
+      // a strip nudged along the board (by the eyepiece rubbing it, being carried, or another strip riding it) slides softly too
+      for (const s of scene.strips) {
+        if (held && held.s === s) continue;
+        const sp = Math.hypot(s.vx, s.vy) + Math.abs(s.vw) * s.h * 0.25;
+        if (sp > 0.008) moveSlide = Math.max(moveSlide, Math.min(1, sp / 0.12) * 0.7);
+      }
+      measureMotion(Math.min(dtMs, 40));
       if (active || wasActive) { findOverlaps(); applyDom(); }
       wasActive = active;
       contact = contactNow;
       return active;
+    },
+
+    /* Film being moved under the eyepiece drags it along. eye = {x, y, radius}. Returns {x, y, f}: the velocity (px/ms) the moving film
+       would give the eyepiece, and how firmly it holds it (0..1). It is worked out at the patch of film that is under the eyepiece: the
+       strip's own velocity there (its slide plus the swing of its turn, so the top and bottom of one strip drag differently), counted
+       more the nearer the middle of the eyepiece, and by how much of the eyepiece the strip covers. A strip that is not moving, or is
+       not under the eyepiece, does nothing. */
+    dragOnEye(eye) {
+      let fSum = 0, vx = 0, vy = 0;
+      for (const s of scene.strips) {
+        const V = moverVelocity(s);
+        if (!V || Math.hypot(V.x, V.y) + Math.abs(V.w) * s.h * 0.25 < 0.02) continue;
+        const [cx, cy] = centreOf(s);
+        let { n, tot, sx, sy } = coverage(s, eye);
+        if (n <= 0) continue;
+        sx /= n; sy /= n;
+        const rx = sx - cx, ry = sy - cy;
+        const f = Math.min(1, n / tot / 0.3);                        // a strip about as wide as the eyepiece's third grips it fully
+        fSum += f; vx += (V.x - V.w * ry) * f; vy += (V.y + V.w * rx) * f;
+      }
+      return fSum > 0 ? { x: vx / fSum, y: vy / fSum, f: Math.min(1, fSum) } : { x: 0, y: 0, f: 0 };
     },
 
     /* The eyepiece lands while moving (eye = {x, y, vx, vy, radius}): it drags the film beneath along its line the moment it touches,
@@ -571,7 +636,7 @@ export function createFilm(scene, cfg = { push: 1, flutter: 1, rub: 0.5 }) {
         const gx = Math.max(-s.w / 2, Math.min(s.w / 2, lx)), gy = Math.max(0, Math.min(s.h, ly));
         const [rx, ry] = rotate(s.rot, gx, gy - s.h / 2);
         const J = (SPIN_RUB * s.h * s.h) / 12;
-        const K = SLAP * strength * under * cfg.push;
+        const K = (cfg.slap ?? SLAP) * strength * under * cfg.push;
         const fx = K * (eye.vx - (s.vx - s.vw * ry)), fy = K * (eye.vy - (s.vy + s.vw * rx));
         s.vx += fx; s.vy += fy; s.vw += (rx * fy - ry * fx) / J;
         s.cells.forEach((c, i) => {
@@ -636,7 +701,9 @@ export function createFilm(scene, cfg = { push: 1, flutter: 1, rub: 0.5 }) {
     dragTo(point) {
       if (!held) return;
       const { s, gx, gy } = held;
-      for (const f of [1, 0.5, 0.25, 0.12]) {
+      const lag = 1 / (1 + (cfg.eyeLoad ?? EYE_LOAD) * eyeLoad);
+      for (const f0 of [1, 0.5, 0.25, 0.12]) {
+        const f = f0 * lag;
         const r = pull(s, gx, gy, point, f);
         if (!r.ok) continue;
         const now = performance.now();

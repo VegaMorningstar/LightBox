@@ -250,6 +250,10 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
   // effect on the film and makes no sliding or crackling sounds.
   let lift = 0, liftGoal = 0;
   let liftHeight = 1.25;               // how high it is lifted (a multiple of the old lift), for everything that depends on height
+  let eyeMass = 1;                     // how heavy the eyepiece is: it resists being carried by film, and makes a strip under it harder to drag
+  let carriedAt = -1e9;                // when film last carried the eyepiece
+  let filmDragsEye = 1;                // how much film moved under the eyepiece drags the eyepiece with it
+  const LOUPE_DRAG = 0.004;            // per ms, where the film grips it fully
   let dropCarry = 1.3;                 // how much of its speed a lifted eyepiece keeps when let go (it carries on along the way it was moving)
   let landShake = 1;                   // how hard the surface and the film shiver when the eyepiece is set down
   let shakeY = 0, shakeX = 0, shakeVY = 0, shakeVX = 0;   // the board's own shiver (a few tenths of a pixel)
@@ -281,7 +285,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
   let film = null;     // friction between eyepiece, film and board
   let gripping = false;                // a film strip is being held
   let sceneRef = null;                 // the scene the glasses draw, so sliders can update it
-  const filmCfg = { push: filmDrag, flutter: filmFlutter, rub: 0.5 };   // rub: how much a strip moved over another drags the one beneath
+  const filmCfg = { push: filmDrag, flutter: filmFlutter, rub: 0.5, eyeLoad: 0.4, carry: 0.6, slap: 0.35 };   // rub: how much a strip moved over another drags the one beneath
   const eyeV = { x: 0, y: 0 };         // eyepiece velocity in px per ms, smoothed
   let fade = shadowFade;
   let lensPad = 0;
@@ -463,6 +467,17 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     if (lift < liftGoal) lift = Math.min(liftGoal, lift + dt / liftTime);
     else if (lift > liftGoal) lift = Math.max(liftGoal, lift - dt / Math.max(170, liftTime * 0.45));
     if (wasUp && lift === 0) { sounds.place(Math.min(1.4, 0.55 + 0.35 * liftHeight)); landed(); }
+    // Film that is being moved under the eyepiece (held, or gliding after a throw) drags it along, by friction: along the way the film
+    // moves at the patch under it. Not while the eyepiece is lifted, and not while you hold it (your hand wins).
+    if (film && !dragging && lift < 0.5 && filmDragsEye > 0) {
+      const d = film.dragOnEye({ x: cur.x, y: cur.y, radius: Do / 2 });
+      if (d.f > 0.01) {
+        const k = Math.min(1, (LOUPE_DRAG * filmDragsEye * d.f * Math.max(0, 1 - smooth(lift) * 2) * dt) / eyeMass);
+        carriedAt = performance.now();
+        vel.x += (d.x - vel.x) * k; vel.y += (d.y - vel.y) * k;
+        coasting = true;
+      }
+    }
     const px = cur.x, py = cur.y;
     cur.x += (goal.x - cur.x) * 0.35;
     cur.y += (goal.y - cur.y) * 0.35;
@@ -472,12 +487,13 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     // A lifted eyepiece is off the film: it cannot push or bend it, and it makes no sliding or crackling. All of
     // that fades back in as it touches down, so a throw that lands still rubs the film as it glides.
     const touch = 1 - smooth(lift);
-    const filmMoving = film ? film.step(dt, { x: cur.x, y: cur.y, vx: eyeV.x * touch, vy: eyeV.y * touch, radius: Do / 2 }) : false;
+    const filmMoving = film ? film.step(dt, { x: cur.x, y: cur.y, vx: eyeV.x * touch, vy: eyeV.y * touch, radius: Do / 2, carried: performance.now() - carriedAt < 500, down: touch, mass: eyeMass }) : false;
     // The slide sounds whenever the eyepiece is dragged or glides across the matte board, film under it or not,
     // and it is silent while the eyepiece is lifted or standing still. It is louder the faster it moves. A film
     // strip sliding on the board slides too. The crackle is separate: it sounds only where the eyepiece rubs the
     // film, or a moving strip rides over another one.
-    const eyeSlide = Math.min(1, Math.hypot(eyeV.x, eyeV.y) * touch / 1.4);
+    // (film carrying the eyepiece moves it slowly, so it takes much less speed to be heard)
+    const eyeSlide = Math.min(1, Math.hypot(eyeV.x, eyeV.y) * touch / (performance.now() - carriedAt < 500 ? 0.3 : 1.4));
     sounds.slide(Math.max(eyeSlide, film ? film.moveSlide : 0));
     sounds.crackle(film ? Math.max(film.contact, film.moveRub) : 0, dt);
     // The glass edge dragging across the board: only while the eyepiece is down on the surface and moving.
@@ -660,6 +676,11 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
       { group: "Light box", key: "seepSpread", name: "Seep distance (px)", min: 8, max: 120, step: 1, value: seepSpread, onInput: (v) => { spread = v; render(); } },
       { group: "Film", key: "stacking", name: "Film stacking", min: 0, max: 1, step: 0.05, value: stacking, onInput: (v) => { stacking_ = v; if (sceneRef) sceneRef.stack = v; film?.setStack(v); render(); } },
       { group: "Film", key: "filmDrag", name: "Film drag", min: 0, max: 2, step: 0.05, value: filmDrag, onInput: (v) => { filmCfg.push = v; } },
+      { group: "Film", key: "eyeLoad", name: "Strip heavier under eyepiece", min: 0, max: 2, step: 0.05, value: filmCfg.eyeLoad, onInput: (v) => { filmCfg.eyeLoad = v; } },
+      { group: "Film", key: "carry", name: "Carried eyepiece rubs strips", min: 0, max: 1.5, step: 0.05, value: filmCfg.carry, onInput: (v) => { filmCfg.carry = v; } },
+      { group: "Film", key: "slap", name: "Landing drags film", min: 0, max: 1.5, step: 0.05, value: filmCfg.slap, onInput: (v) => { filmCfg.slap = v; } },
+      { group: "Film", key: "eyeMass", name: "Eyepiece weight", min: 0.2, max: 4, step: 0.05, value: eyeMass, onInput: (v) => { eyeMass = v; } },
+      { group: "Film", key: "filmDragsEye", name: "Film drags eyepiece", min: 0, max: 3, step: 0.05, value: filmDragsEye, onInput: (v) => { filmDragsEye = v; } },
       { group: "Film", key: "stripRub", name: "Strip-on-strip drag", min: 0, max: 3, step: 0.05, value: filmCfg.rub, onInput: (v) => { filmCfg.rub = v; } },
       { group: "Film", key: "filmFlutter", name: "Film flutter", min: 0, max: 2, step: 0.05, value: filmFlutter, onInput: (v) => { filmCfg.flutter = v; } },
       { group: "Sound · master", key: "vol_master", name: "Master volume", min: 0, max: 1, step: 0.05, value: vols.master, onInput: (v) => sounds.setVolume("master", v) },
