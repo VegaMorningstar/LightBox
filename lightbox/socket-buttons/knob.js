@@ -145,6 +145,36 @@ export function paintSocketKnob(ctx, { x, y, size, angle = 0 }) {
   const disc = (cx, cy, rad, fill) => { ctx.beginPath(); ctx.arc(cx, cy, rad, 0, Math.PI * 2); ctx.fillStyle = fill; ctx.fill(); };
   ctx.save();
   ctx.translate(x, y);
+  // the scale engraved round it, and the − and + at its ends: a dark groove with a light lip on its lower-right edge (as on the page)
+  const u = (size * 1.46) / 100;                                  // one unit of the page's scale drawing, in px
+  const groove = (dx, dy, colour) => {
+    ctx.save();
+    ctx.translate(dx, dy);
+    ctx.strokeStyle = colour;
+    ctx.lineCap = "round";
+    for (let i = 1; i < STEPS; i++) {
+      const a = ((-SWEEP + (2 * SWEEP * i) / STEPS) * Math.PI) / 180, major = i === STEPS / 2;
+      ctx.lineWidth = (major ? 2.6 : 1.9) * u;
+      ctx.beginPath();
+      ctx.moveTo(Math.sin(a) * 41.5 * u, -Math.cos(a) * 41.5 * u);
+      ctx.lineTo(Math.sin(a) * (major ? 47.5 : 44.5) * u, -Math.cos(a) * (major ? 47.5 : 44.5) * u);
+      ctx.stroke();
+    }
+    ctx.lineWidth = 2.8 * u;
+    ctx.beginPath();
+    ctx.moveTo(-49 * u, 0); ctx.lineTo(-40 * u, 0);
+    ctx.moveTo(40 * u, 0); ctx.lineTo(49 * u, 0);
+    ctx.moveTo(44.5 * u, -4.5 * u); ctx.lineTo(44.5 * u, 4.5 * u);
+    ctx.stroke();
+    ctx.restore();
+  };
+  groove(0.8 * u, 1 * u, "rgba(255,253,246,.8)");
+  groove(0, 0, "rgba(46,34,20,.85)");
+  // the knob stands proud of the surface: it casts a shadow toward the lower right
+  ctx.save();
+  ctx.shadowColor = "rgba(40,24,8,.4)"; ctx.shadowBlur = 9; ctx.shadowOffsetX = 4; ctx.shadowOffsetY = 6;
+  disc(0, 0, r, "#1c150e");
+  ctx.restore();
   disc(1.2, 1.8, r + 2.9, "rgba(255,252,240,.85)");
   disc(-.8, -1, r + 2.9, "rgba(70,48,26,.3)");
   disc(0, 0, r + 2, "rgba(58,40,22,.5)");

@@ -18,7 +18,8 @@
   -webkit-tap-highlight-color: transparent;
   outline: none;
   background: #1c150e;
-  box-shadow: var(--socket), inset 0 0 3px 1px rgba(10, 6, 2, .5);
+  /* it stands proud of the surface, so it casts a shadow toward the lower right (light from the upper left) */
+  box-shadow: 4px 6px 9px 1px rgba(40, 24, 8, .4), var(--socket), inset 0 0 3px 1px rgba(10, 6, 2, .5);
 }
 .sb-knob.is-turning { cursor: grabbing; }
 .sb-knob:focus-visible { outline: 1.5px solid rgba(42, 38, 34, .55); outline-offset: 9px; }
