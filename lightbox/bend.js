@@ -44,7 +44,10 @@ export function lighting(sl, z, o = 0) {
 
 /* How one arch is shaped. No two bends are alike: each strip has its own lean (the peak sits nearer one end), its own height and a
    faint ripple, set from `bk.seed` (a number 0..1 per strip, kept for the strip's life). The shape is 0 at the hand and at the holder. */
-function arch(bk, u) { return u > 0 && u < 1 ? Math.abs(Math.sin(Math.PI * Math.pow(u, bk.g))) : 0; }
+/* One bump, flat at both ends: sin² of a gently warped position. This is the shape a sheet takes when it buckles with both ends held flat
+   (the film leaves the flat with no slope at all, rises smoothly, and settles back the same way, so there is no kink or sudden drop).
+   The warp (bk.g) only leans the peak toward one end; it keeps the ends flat for 0.5 < g. */
+function arch(bk, u) { if (!(u > 0 && u < 1)) return 0; const w = Math.sin(Math.PI * Math.pow(u, bk.g)); return w * w; }
 
 /* The bend is a single peak (one wave) lying between the hand and the holder. Its wavelength grows with the distance between them, but it
    is shorter than that distance and sits wherever it likes in it: the film either side of the peak lies flat. t0..t1 is where the peak
@@ -69,7 +72,7 @@ export function archHeight(d, span) {
 /* set the strip's own bend character from its seed (called once) */
 export function seedBend(bk, seed) {
   const r = (k) => { const x = Math.sin(seed * 12.9898 * (k + 1) + k * 78.233) * 43758.5453; return x - Math.floor(x); };
-  bk.g = 0.78 + 0.55 * r(1);          // lean of the peak: below 1 it sits toward the holder, above 1 toward the hand
+  bk.g = 0.85 + 0.35 * r(1);          // lean of the peak: below 1 it sits toward the holder, above 1 toward the hand (kept gentle so the slope stays gradual)
   bk.amp = 0.8 + 0.4 * r(2);          // this strip's own height
   bk.rip = 0.05 + 0.08 * r(3);        // faint ripple on top of the bow
   bk.ph = r(4) * Math.PI * 2;

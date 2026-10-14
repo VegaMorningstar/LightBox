@@ -141,7 +141,7 @@ figure("which", "Which motions bend it",
 
 /* ------------------------------------------------------------------------------------------------------------------------------ 3 (live) */
 const f3 = figure("peak", "Slack becomes one peak",
-  "Side view along the strip. Hand at the left, eyepiece (the pin) at the right. The dotted line is the film flat and unbent. The free length shrinks by the slack d as the film lifts into one peak; the film beyond the peak has moved back by d. Move the sliders: this is drawn with the page's own shape functions.",
+  "Side view along the strip. Hand at the left, eyepiece (the pin) at the right. The dotted line is the film flat and unbent. The free length shrinks by the slack d as the film lifts into one peak; the film beyond the peak has moved back by d. The film leaves the flat with no slope, rises, and settles back the same way (the shape of a sheet buckled with both ends held flat, sin²), so there is no kink. Move the sliders: this is drawn with the page's own shape functions.",
   `<div class="controls">
      <label>slack d <input id="p-d" type="range" min="0" max="105" value="48"><output id="o-d"></output> px</label>
      <label>free length L <input id="p-L" type="range" min="120" max="700" value="380"><output id="o-L"></output> px</label>
@@ -166,7 +166,7 @@ function drawPeak() {
     <line x1="${ex}" y1="${gy - 30}" x2="${ex}" y2="${gy + 4}" stroke="${BLUE}" stroke-dasharray="4 3"/><text x="${ex + 5}" y="${gy - 34}" style="fill:${BLUE}">pin</text>
     ${dim(hx, 270, ex, 270, `free length L = ${L} px → ${f1(L - dd)} px of straight run`, BLUE)}
     ${dim(x0 + 0, 40, x1, 40, `wave: ${f1((bk.t1 - bk.t0) * L)} px  (${Math.round((bk.t1 - bk.t0) * 100)}% of L)`, GOLD)}
-    ${bk.a > 0.5 ? `<line x1="${(x0 + x1) / 2}" y1="${gy}" x2="${(x0 + x1) / 2}" y2="${peakY}" stroke="${WINE}" stroke-width="1.2" stroke-dasharray="3 3"/><text x="${(x0 + x1) / 2 + 8}" y="${(gy + peakY) / 2}" style="fill:${WINE}" class="big">peak ${f1(bk.a * bk.amp)} px</text>` : ""}
+    ${bk.a > 0.5 ? `<line x1="${(x0 + x1) / 2}" y1="${gy}" x2="${(x0 + x1) / 2}" y2="${peakY}" stroke="${WINE}" stroke-width="1.2" stroke-dasharray="3 3"/><text x="${(x0 + x1) / 2 - 8}" y="${(gy + peakY) / 2}" text-anchor="end" style="fill:${WINE}" class="big">peak ${f1(bk.a * bk.amp)} px</text>` : ""}
     <text x="${ox}" y="20" class="soft">(heights drawn 1.6× so a low peak is visible)</text>
   </svg>`;
   document.getElementById("p-read").textContent = `slack ${f1(dd)} px · peak ${f1(bk.a * bk.amp)} px = (2/π)·√(slack × wave) × this strip's height factor ${f1(bk.amp)} · wave sits ${Math.round(bk.t0 * 100)}%–${Math.round(bk.t1 * 100)}% of the way from hand to eyepiece · film beyond the wave has moved ${f1(dd)} px toward the hand`;

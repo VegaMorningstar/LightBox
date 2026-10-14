@@ -185,6 +185,8 @@ the rim picture → buttons → film → dust → light seep and lit holes → p
 - **One peak, one wave.** A bend is a single peak (never several, never two side by side). Its **wavelength follows the distance between the
   hand and the eyepiece**, but it is shorter than that distance and sits wherever it likes within it (`placeBend`): the film either side lies
   flat. It does not have to start at the eyepiece or end at the hand.
+- **The peak is one smooth bump, flat at both ends**: the shape of a sheet buckled with both ends held flat (sin²). The film leaves the flat with no slope,
+  rises gradually and settles back the same way: no kink, no sudden drop (`arch` in `bend.js`).
 - **No two bends are alike**: each strip has its own lean (where the peak sits), height, ripple, position and wavelength share, from its
   place in the sheet (`seedBend`). The film's arc length is kept: where it lifts it also draws in lengthwise (`arcTable`, `archHeight`).
 - **The bend is smooth and has nothing to do with the picture frames**: a bent strip is drawn as thin slices, each with its own scale and
