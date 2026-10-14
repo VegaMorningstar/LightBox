@@ -256,42 +256,50 @@ export function createSounds({ volumes = {} } = {}) {
       }
     },
     /* how hard the eyepiece is rubbing the film, 0..1 (film.contact); call every frame, 0 when it isn't */
-    /* One "wop" for one peak: the sound a thin sheet of metal or paper makes when it flexes up and is let go, held at one end. A low swell
-       of airy rumble whose pitch bends up and comes back, with a soft body under it. kind "up": the film rising into an arch; "down": the arch
-       falling back (shorter, a little higher and lighter). k: 0..1, how hard it flexed. Nothing repeats: one call, one wop. */
+    /* One "womp" for one peak: the round, soft sound a thin sheet makes when it flexes up and is let go, held at one end. It opens like an "o" (a
+       low note with the air still open), closes like an "m" (the note sinks and the sound is shut in, muffled) and ends in a soft "p" (a
+       small low puff as the sheet settles). kind "up": the film rising into its peak; "down": the peak falling back (shorter, lighter).
+       k: 0..1, how tall the peak is: it sets the loudness. Nothing repeats: one call, one womp. */
     wop(k = 0.7, kind = "up") {
       if (vols.wave <= 0 || !ensure()) return;
       const t = ctx.currentTime + 0.002;
       const hard = Math.min(1, Math.max(0.05, k));                // as loud as the peak is tall
       const up = kind === "up";
-      const dur = (up ? 0.34 : 0.22) * (0.9 + 0.2 * hard);
-      const peakAt = t + dur * (up ? 0.38 : 0.28);
-      // the air: a band of noise that rises in pitch to the peak and settles
-      const src = ctx.createBufferSource();
-      src.buffer = noise;
-      const band = ctx.createBiquadFilter();
-      band.type = "bandpass"; band.Q.value = 2;
-      const f0 = (up ? 170 : 230) * jitter(0.05);
-      band.frequency.setValueAtTime(f0, t);
-      band.frequency.exponentialRampToValueAtTime(f0 * (up ? 1.9 : 1.5), peakAt);
-      band.frequency.exponentialRampToValueAtTime(f0 * 0.85, t + dur);
-      const air = ctx.createGain();
-      envelope(air.gain, t, 0.5 * hard, dur * (up ? 0.38 : 0.28), dur * 0.62);
-      src.connect(band).connect(air).connect(waveMaster);
-      src.start(t, Math.random() * 1.5); src.stop(t + dur + 0.05);
-      // the body: a low note that swoops with it
+      const dur = (up ? 0.46 : 0.3) * (0.9 + 0.2 * hard);
+      const swell = dur * 0.34;                                    // the "o" opens and reaches its fullest
+      const close = t + dur * 0.62;                                // the "m" shuts in
+      const end = t + dur;
+      // the body: a low round note that sinks as the sound closes
       const o = ctx.createOscillator();
       o.type = "triangle";
-      const b0 = (up ? 88 : 112) * jitter(0.04);
-      o.frequency.setValueAtTime(b0, t);
-      o.frequency.exponentialRampToValueAtTime(b0 * (up ? 1.6 : 1.35), peakAt);
-      o.frequency.exponentialRampToValueAtTime(b0 * 0.9, t + dur);
-      const lp = ctx.createBiquadFilter();
-      lp.type = "lowpass"; lp.frequency.value = 300;
+      const b0 = (up ? 138 : 158) * jitter(0.04);
+      o.frequency.setValueAtTime(b0 * 0.9, t);
+      o.frequency.exponentialRampToValueAtTime(b0, t + swell);
+      o.frequency.exponentialRampToValueAtTime(b0 * 0.62, end);
+      const mouth = ctx.createBiquadFilter();                      // the "o" to "m": the sound is open, then closes up
+      mouth.type = "lowpass"; mouth.Q.value = 3.2;
+      mouth.frequency.setValueAtTime(420, t);
+      mouth.frequency.exponentialRampToValueAtTime(760, t + swell);
+      mouth.frequency.exponentialRampToValueAtTime(150, end);
       const body = ctx.createGain();
-      envelope(body.gain, t, 0.38 * hard, dur * (up ? 0.38 : 0.28), dur * 0.6);
-      o.connect(lp).connect(body).connect(waveMaster);
-      o.start(t); o.stop(t + dur + 0.05);
+      envelope(body.gain, t, 0.5 * hard, swell, dur - swell);
+      o.connect(mouth).connect(body).connect(waveMaster);
+      o.start(t); o.stop(end + 0.05);
+      // a soft breath of air under it, closing with it
+      const src = ctx.createBufferSource();
+      src.buffer = noise;
+      const air = ctx.createBiquadFilter();
+      air.type = "bandpass"; air.Q.value = 1.6;
+      air.frequency.setValueAtTime(190, t);
+      air.frequency.exponentialRampToValueAtTime(330, t + swell);
+      air.frequency.exponentialRampToValueAtTime(130, end);
+      const airGain = ctx.createGain();
+      envelope(airGain.gain, t, 0.22 * hard, swell, dur * 0.66 - swell);
+      src.connect(air).connect(airGain).connect(waveMaster);
+      src.start(t, Math.random() * 1.5); src.stop(end + 0.05);
+      // the "p": a small low puff as the sheet settles
+      noiseBurst(close + dur * 0.12, { type: "lowpass", freq: 260 * jitter(0.08), q: 0.7, peak: 0.34 * hard, decay: 0.07, attack: 0.004 }, waveMaster);
+      tone(close + dur * 0.12, { type: "sine", from: 110 * jitter(0.05), to: 66, peak: 0.3 * hard, decay: 0.09, sweep: 0.05 }, waveMaster);
     },
     slide(level01) {
       if (!slideNodes) return;                   // not unlocked yet

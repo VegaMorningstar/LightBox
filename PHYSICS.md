@@ -206,8 +206,8 @@ the rim picture → buttons → film → dust → light seep and lit holes → p
 - **The stored slack pushes the eyepiece**: it builds as the hand pushes; once its push beats the eyepiece's friction the eyepiece gives way
   along the strip, the slack is used up and the peak falls back down. The heavier the eyepiece, the later it gives way and the taller the peak
   (`BK_K`, `BK_MU`, *Eyepiece weight*; *Bent film pushes eyepiece*, *Film bend height*). Released, the slack slides away.
-- **Sound: one "wop" per peak**, as loud as the peak is tall (`bendEvents`, `sounds.wop`): it sounds when the peak has risen to its top, and a
-  lighter one when it falls back after being let go. Never a repeating wop. Volume 0.4. The film crackle from the bend itself plays at only 0.15 of its level.
+- **Sound: one "womp" per peak**, as loud as the peak is tall (`bendEvents`, `sounds.wop`): it sounds when the peak has risen to its top, and a
+  lighter one when it falls back after being let go. Never a repeating womp. It is round and low: it opens like an "o", closes like an "m" (the note sinks and the sound is shut in) and ends in a soft "p". Volume 0.4. The film crackle from the bend itself plays at only 0.15 of its level.
 - **Film hanging over the rim of the panel curves away**: the part past the rim looks smaller and darker the further past it is, as if bending
   down over the edge (`overRim`; *Film curves over the rim*). It is drawn the same way, as slices.
 

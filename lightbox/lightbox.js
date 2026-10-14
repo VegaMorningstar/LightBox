@@ -540,7 +540,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     const eyeSlide = Math.min(1, Math.hypot(eyeV.x, eyeV.y) * touch / (performance.now() - carriedAt < 500 ? 0.3 : 1.4));
     sounds.slide(Math.max(eyeSlide, film ? film.moveSlide : 0));
     sounds.crackle(film ? Math.max(film.contact, film.moveRub, film.bendCrunch * 0.15) : 0, dt);     // (a bend only crackles a little: it wops)
-    if (film) for (const e of film.takeBendEvents()) sounds.wop(e.k, e.kind);        // one wop for each peak
+    if (film) for (const e of film.takeBendEvents()) sounds.wop(e.k, e.kind);        // one womp for each peak
     // The glass edge dragging across the board: only while the eyepiece is down on the surface and moving.
     sounds.glassDrag(Math.hypot(eyeV.x, eyeV.y) * touch / 1.6);
     const shaking = stepShake(dt);
@@ -740,7 +740,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
       { group: "Sound · lifting", key: "vol_place", name: "Set-down", min: 0, max: 1, step: 0.05, value: vols.place, onInput: (v) => sounds.setVolume("place", v) },
       ...(GLASS_DRAG_ENABLED ? [{ group: "Sound · sliding", key: "vol_drag", name: "Glass drag", min: 0, max: 1, step: 0.05, value: vols.drag, onInput: (v) => sounds.setVolume("drag", v) }] : []),
       { group: "Sound · sliding", key: "vol_slide", name: "Eyepiece slide", min: 0, max: 1, step: 0.01, value: vols.slide, onInput: (v) => sounds.setVolume("slide", v) },
-      { group: "Sound · sliding", key: "vol_wave", name: "Film bend wop", min: 0, max: 1, step: 0.05, value: vols.wave, onInput: (v) => sounds.setVolume("wave", v) },
+      { group: "Sound · sliding", key: "vol_wave", name: "Film bend womp", min: 0, max: 1, step: 0.05, value: vols.wave, onInput: (v) => sounds.setVolume("wave", v) },
       { group: "Sound · sliding", key: "vol_crackle", name: "Film crackle", min: 0, max: 1, step: 0.05, value: vols.crackle, onInput: (v) => sounds.setVolume("crackle", v) },
       { group: "Sound · interface", key: "vol_button", name: "Button click", min: 0, max: 1, step: 0.05, value: vols.button, onInput: (v) => sounds.setVolume("button", v) },
     ], { onOrganize: () => { film?.reset(); kick(); }, onButton: (phase) => { sounds.unlock(); sounds.button(phase); }, sliders });

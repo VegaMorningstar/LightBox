@@ -280,10 +280,10 @@ figure("draw", "How a bent strip is drawn",
   let pk = 0; sim.forEach(([, , a]) => { if (a > pk) pk = a; });
   const tPeak = sim.find(([, , a]) => a >= 0.98 * pk)[0] + 0.14;                          // it has stopped rising for 140 ms
   const tDown = sim.find(([t, , a]) => t > 1.5 && a < 6)?.[0] ?? 2.6;                      // and has fallen back down
-  figure("sound", "The sound: one wop per peak",
-    `A single "wop" plays when the peak has reached its top, as loud as the peak is tall (height ÷ ${BK.MAX}). When the film is let go and the peak falls back down, a lighter wop plays (× 0.7). Nothing repeats. The film crackle that comes from bending is turned right down (× 0.15) so it is the wop you hear.`,
+  figure("sound", "The sound: one womp per peak",
+    `A single "womp" plays when the peak has reached its top, as loud as the peak is tall (height ÷ ${BK.MAX}). When the film is let go and the peak falls back down, a lighter womp plays (× 0.7). Nothing repeats. The film crackle that comes from bending is turned right down (× 0.15) so it is the womp you hear.`,
     plot({ x0: 0, x1: 3.8, y0: 0, y1: 85, xl: "time (s)", yl: "peak height (px)", series: [{ t: "peak height", c: WINE, pts: sim.map(([t, , a]) => [t, a]) }],
-      vlines: [{ x: tPeak, t: `WOP · volume ${Math.round((pk / BK.MAX) * 100)}%`, c: GOLD }, { x: tDown, t: "lighter wop as it lands", c: BLUE }],
+      vlines: [{ x: tPeak, t: `WOMP · volume ${Math.round((pk / BK.MAX) * 100)}%`, c: GOLD }, { x: tDown, t: "lighter womp as it lands", c: BLUE }],
       notes: "" }));
 }
 
