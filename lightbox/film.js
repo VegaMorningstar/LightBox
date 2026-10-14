@@ -91,7 +91,7 @@ export function createFilm(scene, cfg = { push: 1, flutter: 1, rub: 0.5, eyeLoad
   let zTop = 0;         // the strip last picked up sits on top
   scene.strips.forEach((s) => {
     s.cells.forEach((c) => { c.jx = c.jy = c.jvx = c.jvy = 0; c.by = 0; c.z = 0; c.k = 1; c.shade = 1; });
-    s.bk = { d: 0, a: 0, sign: 1, hand: 0, pin: 0, L: 1, cover: 0, hp: null };
+    s.bk = { d: 0, a: 0, sign: 1, hand: 0, pin: 0, L: 1, cover: 0, hp: null, can: true };
     seedBend(s.bk, (scene.strips.indexOf(s) + 1) * 0.6180339887 % 1);
   });
   let prevEye = null;
@@ -519,6 +519,13 @@ export function createFilm(scene, cfg = { push: 1, flutter: 1, rub: 0.5, eyeLoad
         }
       }
       bk.hp = hp;
+      // A wave no longer than one picture is too short for the film to buckle into (a frame is stiff across its own length): there is no bend,
+      // so nothing is stored and the film simply pushes the eyepiece as before. The bend eases in as the wave grows past one picture.
+      placeBend(bk);
+      const wave = (bk.t1 - bk.t0) * bk.L;
+      bk.can = wave > s.fh;
+      if (!bk.can) bk.d = 0;
+      const grow = smoothstep(s.fh, s.fh * 1.35, wave);
       // slack that is not being pushed on slides away (slowly while held, quickly once let go)
       if (!(cov && close > 0)) bk.d *= Math.exp(-dtMs / (isHeld ? BK.HELD_RELAX : BK.RELAX));
       if (bk.d > 0 && !cov && !isHeld) bk.d = Math.max(0, bk.d + 0);   // (released: only the decay above)
@@ -530,9 +537,8 @@ export function createFilm(scene, cfg = { push: 1, flutter: 1, rub: 0.5, eyeLoad
         eyePush.x += bk.sign * u[0] * acc; eyePush.y += bk.sign * u[1] * acc;
         if (!isHeld) { /* the film springs back as the eyepiece gives way */ }
       }
-      // the shape: one arch for a short free length, two for a long one; its height follows the slack (arc length is kept)
-      placeBend(bk);
-      const target = bk.d > 0 ? Math.min(BK.MAX, (cfg.bend ?? 1) * archHeight(bk.d, (bk.t1 - bk.t0) * bk.L)) : 0;
+      // the shape: one peak; its height follows the slack (arc length is kept)
+      const target = bk.d > 0 ? Math.min(BK.MAX, (cfg.bend ?? 1) * archHeight(bk.d, (bk.t1 - bk.t0) * bk.L)) * grow : 0;
       bk.a += (target - bk.a) * (1 - Math.exp(-dtMs / BK.SMOOTH));
       if (bk.a < 0.05 && target === 0) bk.a = 0;
       // One wop for each peak, as loud as the peak is tall: it sounds when the arch has risen to its top (it stops rising, or begins to fall),
@@ -723,7 +729,7 @@ export function createFilm(scene, cfg = { push: 1, flutter: 1, rub: 0.5, eyeLoad
         let wvx = V.x - V.w * ry, wvy = V.y + V.w * rx;
         // A held strip pushed lengthwise toward the eyepiece cannot push it: the film buckles instead (the bend then pushes the eyepiece, see
         // updateBend). Only a pull away from it, or sideways, passes through.
-        if (held && held.s === s && s.bk.cover > 0 && s.bk.L > 1) {
+        if (held && held.s === s && s.bk.cover > 0 && s.bk.L > 1 && s.bk.can) {
           const ux = -Math.sin(s.rot), uy = Math.cos(s.rot), vu = wvx * ux + wvy * uy;
           if (s.bk.sign * vu > 0) { wvx -= vu * ux; wvy -= vu * uy; }
         }

@@ -187,6 +187,8 @@ the rim picture → buttons → film → dust → light seep and lit holes → p
   flat. It does not have to start at the eyepiece or end at the hand.
 - **The peak is one smooth bump, flat at both ends**: the shape of a sheet buckled with both ends held flat (sin²). The film leaves the flat with no slope,
   rises gradually and settles back the same way: no kink, no sudden drop (`arch` in `bend.js`).
+- **No bend when the wave is no longer than one picture**: a wave that short cannot buckle (a frame is stiff across its own length), so nothing is stored and the film just
+  pushes the eyepiece as before. Past one picture the bend eases in over the next third of a picture (`bk.can`, `grow` in `film.js` `updateBend`).
 - **No two bends are alike**: each strip has its own lean (where the peak sits), height, ripple, position and wavelength share, from its
   place in the sheet (`seedBend`). The film's arc length is kept: where it lifts it also draws in lengthwise (`arcTable`, `archHeight`).
 - **The bend is smooth and has nothing to do with the picture frames**: a bent strip is drawn as thin slices, each with its own scale and
