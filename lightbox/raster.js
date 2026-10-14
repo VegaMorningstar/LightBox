@@ -16,6 +16,7 @@
 
 import { paintHoles } from "./bleed.js";
 import { paintSocketButton } from "./socket-buttons/buttons.js";
+import { paintSocketKnob } from "./socket-buttons/knob.js";
 
 const ORANGE = [217 / 255, 132 / 255, 58 / 255]; // film-mask cast, matches .lb-neg .lb-img::after
 const ORANGE_MIX = 0.55;
@@ -758,7 +759,7 @@ function createWindowView(scene, dpr, { mode, bg }) {
       // the surface of the light box: its dark room, the fall of its light and the rim's highlight. The film, the buttons and the dust
       // lie on it, so they are drawn over it, and the panel's grain and falloff go over everything, as on the page.
       if (scene.edgeCanvas) ctx.drawImage(scene.edgeCanvas, 0, 0, scene.edgeCanvas.width, scene.edgeCanvas.height, 0, 0, scene.W, scene.H);
-      for (const btn of scene.buttons ?? []) paintSocketButton(ctx, btn);      // the push buttons lie on the panel, under the film
+      for (const btn of scene.buttons ?? []) (btn.icon === "knob" ? paintSocketKnob : paintSocketButton)(ctx, btn);      // the push buttons lie on the panel, under the film
       drawScene(ctx, scene, { mode, view: { x0: cx - half, y0: cy - half, x1: cx + half, y1: cy + half } });
       scene.specks?.draw(ctx, { x0: cx - half, y0: cy - half, x1: cx + half, y1: cy + half }, scene.frames);   // dust lying on the panel
       // Through the eyepiece the photographs must be seen as they are: none of the panel's own effects (light spilling onto the film,

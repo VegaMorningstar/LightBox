@@ -180,6 +180,12 @@ the rim picture → buttons → film → dust → light seep and lit holes → p
   stays pressed in.
 - **The buttons lie on the panel, under the film.** Film slides over them and hides them. **A covered button cannot be pressed**; a
   press there grabs the film instead (`setCovered`, checked every frame against the strips).
+- **The volume knob** (`socket-buttons/knob.js`) sits between the sliders and reset buttons and sets the page's overall (master) volume, 0 to 2×,
+  straight up = 1× (the normal level, a detent). It is a rotary dial in the same socket: a knurled rim that turns, a brushed-metal face whose sheen
+  does not turn (the light is fixed), a dark mark, and a scale round it. It turns by dragging round its centre or with the arrow keys, sweeps 270°,
+  and **clicks like the eyepiece ring**: light ticks as it passes each step, a notch as it drops into the 1× detent or an end, a thud at an end, and a
+  little extra turn is needed to break out of the detent. It stays where you left it on this device. Film covering it makes it unusable like the buttons,
+  and the glasses draw it too (`paintSocketKnob`).
 - The buttons sit on the fully lit part of the panel above the film, inside the clear margin; never over the film at rest.
 - They are also drawn into the glass views, under the film, so the eyepiece shows them (`paintSocketButton`).
 - **The sliders panel closes on a press anywhere else** or on Escape (localhost only; the live page has only the reset button).
@@ -200,7 +206,7 @@ the rim picture → buttons → film → dust → light seep and lit holes → p
 
 - **Real recordings** of glass for lift and set-down (`audio/`); everything else synthesised. The synthesised versions are the
   fallback.
-- **Dial**: soft ticks as it turns (0.30), a distinct notch click and end-stop thud (0.60).
+- **Dial**: soft ticks as it turns (0.30), a distinct notch click and end-stop thud (0.60). The volume knob makes the same sounds.
 - **The slide sound** (0.01) plays only while the eyepiece or a strip actually moves over the board; **film crackle** (1.0) only
   where the eyepiece rubs film or a strip rides over another. Both are silent while the eyepiece is lifted.
 - **Lift** (0.60), **set-down** (0.15) and the **surface thump** (0.60) are three separate volumes; the thump plays alongside the

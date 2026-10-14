@@ -13,6 +13,7 @@ import { buildDial, buildTrim, setDialLight, DEG_PER_ZOOM, DETENTS, GLASS_RATIO,
 import { createGlass, createLens } from "./glass.js";
 import { createBleed, paintHoles } from "./bleed.js";
 import { createSocketButton, mountSocketCorner, setCovered, setPressed, ICONS } from "./socket-buttons/buttons.js";
+import { createSocketKnob } from "./socket-buttons/knob.js";
 import { createSpecks } from "./dust.js";
 import { createFilm } from "./film.js";
 import { bakeEdge, buildFilmFilter, createLensView, createNegView, paintGlowLayer, frameQuads, holeSpots, paintOverlay, parseColor, readScene, stripQuad, warmNegatives } from "./raster.js";
@@ -142,7 +143,7 @@ function insideQuad(q, x, y) {
 
 /* Two push buttons (socket-buttons/) in the panel's top right corner: reset, and (when `sliders` is on) the sliders, whose
    panel drops down at the top left, closed by default. There is no bar. */
-function buildControls(rows, { onOrganize, onButton, sliders = true } = {}) {
+function buildControls(rows, { onOrganize, onButton, sliders = true, volume = null } = {}) {
   const nav = document.createElement("nav");
   nav.className = "lb-nav";
   nav.setAttribute("aria-label", "Sliders");
@@ -196,7 +197,10 @@ function buildControls(rows, { onOrganize, onButton, sliders = true } = {}) {
     if (sliders) panel.append(label);
   }
   nav.append(...(sliders ? [panel] : []));
-  return { wrap: nav, corner: [...(sliders ? [toggle] : []), organize], setters };
+  // the volume knob: it sits beside the reset button and sets the page's overall volume (it clicks as it turns, as the eyepiece ring does)
+  const knob = volume ? createSocketKnob({ label: "Volume", min: 0, max: 2, value: volume.value, home: 1, ...volume.sounds, onInput: (v) => { volume.onInput(v); setters.vol_master?.(v); } }) : null;
+  if (knob) setters.vol_master_knob = (v) => knob.set(v);
+  return { wrap: nav, corner: [...(sliders ? [toggle] : []), ...(knob ? [knob.el] : []), organize], setters };
 }
 
 export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFade = 0.85, volumes = {}, outerGlass = {}, filmDrag = 1, filmFlutter = 1, stacking = 1, panelFalloff = 1.25, panelGlow = 1, panelGrain = 1, lightBleed = 1, lightSeep = 1.6, seepSpread = 10, size, controls = true, sliders = true } = {}) {
@@ -333,7 +337,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
         covered = quads.some((q) => insideQuad(q, px, py));
       }
       setCovered(b, covered);
-      shown.push({ x: cx, y: cy, size: r.width, icon: b.dataset.icon });
+      shown.push({ x: cx, y: cy, size: r.width, icon: b.dataset.icon, angle: +(b.dataset.angle ?? 0) });
     }
     sceneRef.buttons = shown;       // the glasses draw them too, under the film
   }
@@ -532,7 +536,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     edgeSize = { m: edgeM, f: edgeF, blur: Math.max(5, Math.min(11, innerWidth * 0.009)) };
     const pad = Math.round(edgeM + edgeF + 8);
     stage.style.setProperty("--pad", `${pad}px`);
-    stage.style.setProperty("--pad-top", `${pad + 52}px`);       // room above the film for the buttons, in the lit part of the panel
+    stage.style.setProperty("--pad-top", `${pad + 66}px`);       // room above the film for the buttons, in the lit part of the panel
     const inner = stage.clientWidth - pad * 2;
     lastWidth = root.clientWidth;
     const cols = columnsFor(inner);
@@ -648,6 +652,9 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
 
   if (controls) {
     const vols = { ...DEFAULT_VOLUMES, ...volumes };
+    // the volume you left it at, on this device
+    const saveVolume = (v) => { try { localStorage.setItem("lightbox-volume", String(v)); } catch { /* private window: it just starts at the default */ } };
+    try { const saved = parseFloat(localStorage.getItem("lightbox-volume")); if (saved >= 0 && saved <= 2) { vols.master = saved; sounds.setVolume("master", saved); } } catch { /* no storage */ }
     const c = buildControls([
       { group: "Eyepiece", key: "zoom", name: "Magnification", min: ZOOM_MIN, max: ZOOM_MAX, step: 0.05, value: zoom, onInput: setZoom },
       { group: "Rim shadow", key: "shadow", name: "Shadow strength", min: 0, max: 6, step: 0.05, value: shadow, onInput: setShadow },
@@ -683,7 +690,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
       { group: "Film", key: "filmDragsEye", name: "Film drags eyepiece", min: 0, max: 3, step: 0.05, value: filmDragsEye, onInput: (v) => { filmDragsEye = v; } },
       { group: "Film", key: "stripRub", name: "Strip-on-strip drag", min: 0, max: 3, step: 0.05, value: filmCfg.rub, onInput: (v) => { filmCfg.rub = v; } },
       { group: "Film", key: "filmFlutter", name: "Film flutter", min: 0, max: 2, step: 0.05, value: filmFlutter, onInput: (v) => { filmCfg.flutter = v; } },
-      { group: "Sound · master", key: "vol_master", name: "Master volume", min: 0, max: 1, step: 0.05, value: vols.master, onInput: (v) => sounds.setVolume("master", v) },
+      { group: "Sound · master", key: "vol_master", name: "Master volume", min: 0, max: 2, step: 0.05, value: vols.master, onInput: (v) => { sounds.setVolume("master", v); setters.vol_master_knob?.(v); saveVolume(v); } },
       { group: "Sound · dial", key: "vol_tick", name: "Dial ticks", min: 0, max: 1, step: 0.05, value: vols.tick, onInput: (v) => sounds.setVolume("tick", v) },
       { group: "Sound · dial", key: "vol_notch", name: "Notch & end stops", min: 0, max: 1, step: 0.05, value: vols.notch, onInput: (v) => sounds.setVolume("notch", v) },
       { group: "Sound · lifting", key: "vol_lift", name: "Lift", min: 0, max: 1, step: 0.05, value: vols.lift, onInput: (v) => sounds.setVolume("lift", v) },
@@ -693,7 +700,17 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
       { group: "Sound · sliding", key: "vol_slide", name: "Eyepiece slide", min: 0, max: 1, step: 0.01, value: vols.slide, onInput: (v) => sounds.setVolume("slide", v) },
       { group: "Sound · sliding", key: "vol_crackle", name: "Film crackle", min: 0, max: 1, step: 0.05, value: vols.crackle, onInput: (v) => sounds.setVolume("crackle", v) },
       { group: "Sound · interface", key: "vol_button", name: "Button click", min: 0, max: 1, step: 0.05, value: vols.button, onInput: (v) => sounds.setVolume("button", v) },
-    ], { onOrganize: () => { film?.reset(); kick(); }, onButton: (phase) => { sounds.unlock(); sounds.button(phase); }, sliders });
+    ], {
+      onOrganize: () => { film?.reset(); kick(); },
+      onButton: (phase) => { sounds.unlock(); sounds.button(phase); },
+      sliders,
+      volume: {
+        value: vols.master,
+        onInput: (v) => { sounds.setVolume("master", v); saveVolume(v); },
+        // the same clicks as the eyepiece ring: light ticks as it turns, a notch as it drops into its resting place, a thud at the ends
+        sounds: { onTick: (n) => { sounds.unlock(); sounds.click(n); }, onNotch: () => { sounds.unlock(); sounds.notch(); }, onStop: () => { sounds.unlock(); sounds.thud(); } },
+      },
+    });
     setters = c.setters;
     root.append(c.wrap);
     cornerEl = mountSocketCorner(stage, c.corner);

@@ -18,7 +18,7 @@
   z-index: 5;
   display: flex;
   align-items: center;
-  gap: var(--sb-gap, 12px);
+  gap: var(--sb-gap, 22px);
 }
 
 .sb-button {
