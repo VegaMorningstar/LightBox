@@ -16,7 +16,7 @@ import { createSocketButton, mountSocketCorner, setCovered, setPressed, ICONS } 
 import { createSocketKnob } from "./socket-buttons/knob.js";
 import { createSpecks } from "./dust.js";
 import { createFilm } from "./film.js";
-import { bakeEdge, buildFilmFilter, createLensView, createNegView, paintGlowLayer, frameQuads, holeSpots, paintOverlay, parseColor, readScene, stripQuad, warmNegatives } from "./raster.js";
+import { bakeEdge, buildFilmFilter, createLensView, createNegView, paintGlowLayer, clipOutButtons, frameQuads, holeSpots, paintOverlay, parseColor, readScene, stripQuad, warmNegatives } from "./raster.js";
 
 const STRIP_DY = [0, 0.34, 0.12, 0.5, 0.05, 0.27];   // per-strip stagger, in frame widths
 const STRIP_ROT = [-0.3, 0.25, -0.15, 0.35, -0.25, 0.15]; // per-strip tilt, degrees
@@ -197,10 +197,10 @@ function buildControls(rows, { onOrganize, onButton, sliders = true, volume = nu
     if (sliders) panel.append(label);
   }
   nav.append(...(sliders ? [panel] : []));
-  // the volume knob: it sits beside the reset button and sets the page's overall volume (it clicks as it turns, as the eyepiece ring does)
-  const knob = volume ? createSocketKnob({ label: "Volume", min: 0, max: 2, value: volume.value, home: 1, ...volume.sounds, onInput: (v) => { volume.onInput(v); setters.vol_master?.(v); } }) : null;
+  // the volume knob: it sits in the top left corner of the panel and sets the page's overall volume (it clicks as it turns, as the eyepiece ring does)
+  const knob = volume ? createSocketKnob({ label: "Volume", min: 0, max: 2, value: volume.value, ...volume.sounds, onInput: (v) => { volume.onInput(v); setters.vol_master?.(v); } }) : null;
   if (knob) setters.vol_master_knob = (v) => knob.set(v);
-  return { wrap: nav, corner: [...(sliders ? [toggle] : []), ...(knob ? [knob.el] : []), organize], setters };
+  return { wrap: nav, corner: [...(sliders ? [toggle] : []), organize], left: knob ? [knob.el] : [], setters };
 }
 
 export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFade = 0.85, volumes = {}, outerGlass = {}, filmDrag = 1, filmFlutter = 1, stacking = 1, panelFalloff = 1.25, panelGlow = 1, panelGrain = 1, lightBleed = 1, lightSeep = 1.6, seepSpread = 10, size, controls = true, sliders = true } = {}) {
@@ -232,7 +232,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
   let seep = lightSeep, spread = seepSpread;
   let specks = null;
   let edgeSize = { m: 14, f: 40 };          // the dark margin and the light's falloff inside the panel's rim (see the stylesheet)
-  let cornerEl = null, cornerButtons = [];   // the push buttons, which lie on the panel under the film
+  let cornerEls = [], cornerButtons = [];   // the push buttons, which lie on the panel under the film
   let grain = panelGrain;
   let falloff = panelFalloff;
   let glow = panelGlow;
@@ -349,7 +349,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     if (!specks || !sc) return;
     const frames = sc.strips.flatMap(frameQuads);
     sc.frames = frames;
-    const key = sc.W + "|" + sc.H + "|" + frames.map((q) => `${Math.round(q[0][0])},${Math.round(q[0][1])},${Math.round(q[2][0])},${Math.round(q[2][1])}`).join("|");
+    const key = sc.W + "|" + sc.H + "|" + (sc.buttons ?? []).map((b) => `${Math.round(b.x)},${Math.round(b.y)}`).join(";") + "|" + frames.map((q) => `${Math.round(q[0][0])},${Math.round(q[0][1])},${Math.round(q[2][0])},${Math.round(q[2][1])}`).join("|");
     if (key === dustKey) return;
     dustKey = key;
     const dpr = overlayDpr();
@@ -360,7 +360,9 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     c.setTransform(1, 0, 0, 1, 0, 0);
     c.clearRect(0, 0, dustEl.width, dustEl.height);
     c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const clipped = clipOutButtons(c, sc.buttons);          // no dust on the buttons, the knob or its markings
     specks.draw(c, null, frames);
+    if (clipped) c.restore();
   }
 
   const render = () => {
@@ -536,7 +538,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     edgeSize = { m: edgeM, f: edgeF, blur: Math.max(5, Math.min(11, innerWidth * 0.009)) };
     const pad = Math.round(edgeM + edgeF + 8);
     stage.style.setProperty("--pad", `${pad}px`);
-    stage.style.setProperty("--pad-top", `${pad + 66}px`);       // room above the film for the buttons, in the lit part of the panel
+    stage.style.setProperty("--pad-top", `${pad + 80}px`);       // room above the film for the buttons, in the lit part of the panel
     const inner = stage.clientWidth - pad * 2;
     lastWidth = root.clientWidth;
     const cols = columnsFor(inner);
@@ -567,7 +569,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
       buildSheet(photos, fw, "lb-neg"),
       ...(glass && lens ? [buildSheet(photos, fw, "lb-ghost"), buildSheet(photos, fw, "lb-mult")] : []),
     );
-    stage.replaceChildren(...(cornerEl ? [cornerEl] : []), edgeEl, filmLayer, seepEl, holesEl, overlayEl, dustEl, glowEl, loupe.el);
+    stage.replaceChildren(...cornerEls, edgeEl, filmLayer, seepEl, holesEl, overlayEl, dustEl, glowEl, loupe.el);
     holesKey = "";
     dustKey = "";
     {   // the rim is baked at the sheet's real size, which is known now the film is in
@@ -713,9 +715,9 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     });
     setters = c.setters;
     root.append(c.wrap);
-    cornerEl = mountSocketCorner(stage, c.corner);
-    stage.prepend(cornerEl);             // the buttons lie on the panel, under the film
-    cornerButtons = c.corner;
+    cornerEls = [mountSocketCorner(stage, c.corner), ...(c.left.length ? [mountSocketCorner(stage, c.left, { side: "left" })] : [])];
+    stage.prepend(...cornerEls);         // the buttons lie on the panel, under the film
+    cornerButtons = [...c.corner, ...c.left];
   }
 
   // drag

@@ -212,6 +212,18 @@ export function paintOverlay(ctx, W, H, { fall, grain }) {
  * agree. From the inside out: the lit surface, a fall to dark (a warm brown glow, then a dark one), a thin soft highlight where the
  * edge turns over, then the dark room. m: the dark margin, f: how far the light falls off inside the rim, blur: how frosted the fall
  * is, all in css px. */
+/* the area of a button or knob and its markings, as a circle, for keeping dust off it (dust lies on the board, not on the fittings) */
+export function buttonClear(b) { return { x: b.x, y: b.y, r: b.icon === "knob" ? b.size * 1.08 : b.size / 2 + 6 }; }
+export function clipOutButtons(ctx, buttons) {
+  if (!buttons?.length) return false;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(-1e5, -1e5, 2e5, 2e5);
+  for (const b of buttons) { const c = buttonClear(b); ctx.moveTo(c.x + c.r, c.y); ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2); }
+  ctx.clip("evenodd");
+  return true;
+}
+
 export function bakeEdge(W, H, m, f, blur, S = 1) {
   const P = 40;                                            // spare room round the picture so the blur has something to blur
   const w = Math.ceil((W + 2 * P) * S), h = Math.ceil((H + 2 * P) * S);
@@ -761,7 +773,9 @@ function createWindowView(scene, dpr, { mode, bg }) {
       if (scene.edgeCanvas) ctx.drawImage(scene.edgeCanvas, 0, 0, scene.edgeCanvas.width, scene.edgeCanvas.height, 0, 0, scene.W, scene.H);
       for (const btn of scene.buttons ?? []) (btn.icon === "knob" ? paintSocketKnob : paintSocketButton)(ctx, btn);      // the push buttons lie on the panel, under the film
       drawScene(ctx, scene, { mode, view: { x0: cx - half, y0: cy - half, x1: cx + half, y1: cy + half } });
+      const clipped = clipOutButtons(ctx, scene.buttons);                    // (no dust on the buttons, the knob or its markings)
       scene.specks?.draw(ctx, { x0: cx - half, y0: cy - half, x1: cx + half, y1: cy + half }, scene.frames);   // dust lying on the panel
+      if (clipped) ctx.restore();
       // Through the eyepiece the photographs must be seen as they are: none of the panel's own effects (light spilling onto the film,
       // its tint and glow, the fall of its light, its rim) may touch them. So in the lens they are applied everywhere except
       // over the picture frames.

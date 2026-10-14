@@ -29,7 +29,7 @@ A rotary knob in the same socket, for a value you set by turning (volume, say):
 ```js
 import { createSocketKnob } from "./socket-buttons/knob.js";
 const volume = createSocketKnob({
-  label: "Volume", min: 0, max: 2, value: 1, home: 1,     // home: a detent it catches on, as well as both ends
+  label: "Volume", min: 0, max: 2, value: 1, home: null,  // home: a value it catches on (a detent), if you want one; both ends always stop it
   onInput: (v) => setVolume(v),
   onTick: (n) => tickSound(n), onNotch: () => notchSound(), onStop: () => thudSound(),
 });

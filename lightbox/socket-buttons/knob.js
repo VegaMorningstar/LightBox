@@ -31,12 +31,21 @@ function ensureStyles() {
 
 /* the scale round the knob: small marks every step, longer ones at the ends and the middle, drawn once as SVG */
 function marks() {
-  const svg = `<svg class="sb-knob-marks" viewBox="-50 -50 100 100" aria-hidden="true">` +
+  // The marks are engraved into the surface: each groove has a dark band along its upper-left inside wall (in shade) and a thin light lip along
+  // its lower-right edge (catching the light), like the markings etched on the eyepiece ring. One filter, defined with the scale.
+  const etch = `<defs><filter id="sb-knob-etch" filterUnits="userSpaceOnUse" x="-80" y="-80" width="160" height="160" color-interpolation-filters="sRGB">` +
+    `<feOffset in="SourceAlpha" dx=".7" dy=".85" result="s"/><feComposite in="SourceAlpha" in2="s" operator="out" result="band"/><feGaussianBlur in="band" stdDeviation=".25" result="bandSoft"/>` +
+    `<feFlood flood-color="#000" flood-opacity=".85"/><feComposite in2="bandSoft" operator="in" result="shadow"/><feComposite in="shadow" in2="SourceAlpha" operator="in" result="shadowIn"/>` +
+    `<feOffset in="SourceAlpha" dx=".8" dy="1" result="s2"/><feComposite in="s2" in2="SourceAlpha" operator="out" result="lipBand"/><feGaussianBlur in="lipBand" stdDeviation=".3" result="lipSoft"/>` +
+    `<feFlood flood-color="#fffdf6" flood-opacity=".95"/><feComposite in2="lipSoft" operator="in" result="lip"/>` +
+    `<feMerge><feMergeNode in="lip"/><feMergeNode in="SourceGraphic"/><feMergeNode in="shadowIn"/></feMerge></filter></defs>`;
+  const svg = `<svg class="sb-knob-marks" viewBox="-50 -50 100 100" aria-hidden="true">${etch}<g filter="url(#sb-knob-etch)">` +
     Array.from({ length: STEPS + 1 }, (_, i) => {
-      const a = ((-SWEEP + (2 * SWEEP * i) / STEPS) * Math.PI) / 180, major = i === 0 || i === STEPS || i === STEPS / 2;
+      if (i === 0 || i === STEPS) return "";                                  // the − and + stand where the end ticks would
+      const a = ((-SWEEP + (2 * SWEEP * i) / STEPS) * Math.PI) / 180, major = i === STEPS / 2;
       const r0 = 41.5, r1 = major ? 47.5 : 44.5;
-      return `<line x1="${(Math.sin(a) * r0).toFixed(2)}" y1="${(-Math.cos(a) * r0).toFixed(2)}" x2="${(Math.sin(a) * r1).toFixed(2)}" y2="${(-Math.cos(a) * r1).toFixed(2)}" stroke-width="${major ? 1.5 : 1}"/>`;
-    }).join("") + `<g class="sb-knob-sign"><path d="M-45 19h8"/><path d="M37 19h8M41 15v8"/></g></svg>`;
+      return `<line x1="${(Math.sin(a) * r0).toFixed(2)}" y1="${(-Math.cos(a) * r0).toFixed(2)}" x2="${(Math.sin(a) * r1).toFixed(2)}" y2="${(-Math.cos(a) * r1).toFixed(2)}" stroke-width="${major ? 2.6 : 1.9}"/>`;
+    }).join("") + `<g class="sb-knob-sign"><path d="M-49 0h9"/><path d="M40 0h9M44.5 -4.5v9"/></g></g></svg>`;
   return svg;
 }
 

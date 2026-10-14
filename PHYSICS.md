@@ -180,11 +180,11 @@ the rim picture → buttons → film → dust → light seep and lit holes → p
   stays pressed in.
 - **The buttons lie on the panel, under the film.** Film slides over them and hides them. **A covered button cannot be pressed**; a
   press there grabs the film instead (`setCovered`, checked every frame against the strips).
-- **The volume knob** (`socket-buttons/knob.js`) sits between the sliders and reset buttons and sets the page's overall (master) volume, 0 to 2×,
-  straight up = 1× (the normal level, a detent). It is a rotary dial in the same socket: a knurled rim that turns, a brushed-metal face whose sheen
-  does not turn (the light is fixed), a dark mark, and a scale round it. It turns by dragging round its centre or with the arrow keys, sweeps a half circle (180°),
-  and **clicks like the eyepiece ring**: light ticks as it passes each step, a notch as it drops into the 1× detent or an end, a thud at an end, and a
-  little extra turn is needed to break out of the detent. It stays where you left it on this device. Film covering it makes it unusable like the buttons,
+- **Dust lies on the board, never on the fittings**: the buttons, the knob and its markings are kept clear of dust, on the page and in the glass views (`clipOutButtons`).
+- **The volume knob** (`socket-buttons/knob.js`) sits in the top left corner of the panel and sets the page's overall (master) volume, 0 to 2×,
+  straight up = 1× (the normal level; the dial turns evenly through it, with no catch there). It is a rotary dial in the same socket: a knurled rim that turns, a brushed-metal face whose sheen
+  does not turn (the light is fixed), a dark mark, and a scale round it, **engraved into the surface** (a dark shaded wall on the upper left of each groove, a light lip on the lower right), with a − and a + standing where the two end ticks would be. It turns by dragging round its centre or with the arrow keys, sweeps a half circle (180°),
+  and **clicks like the eyepiece ring**: light ticks as it passes each step, a thud when it reaches an end. It stays where you left it on this device. Film covering it makes it unusable like the buttons,
   and the glasses draw it too (`paintSocketKnob`).
 - The buttons sit on the fully lit part of the panel above the film, inside the clear margin; never over the film at rest.
 - They are also drawn into the glass views, under the film, so the eyepiece shows them (`paintSocketButton`).
