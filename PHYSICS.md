@@ -206,6 +206,8 @@ the rim picture → buttons → film → dust → light seep and lit holes → p
 - **Film hanging over the rim of the panel curves away**: the part past the rim looks smaller and darker the further past it is, as if bending
   down over the edge (`overRim`; *Film curves over the rim*). It is drawn the same way, as slices.
 
+- **A page of diagrams explains all of this** (`how-film-bends.html`, opened by the wave-shaped button beside the sliders button, so it shows wherever the sliders do). Its figures are drawn from `bend.js` itself (the shape, the numbers in `BK`, `lighting`), so it cannot drift from what the page does.
+
 ## 5. Buttons set into the surface (`socket-buttons/`)
 
 - A button is a dark rim with a frosted ivory top and an etched icon, set into a **socket**: lit lip on the lower right, shaded

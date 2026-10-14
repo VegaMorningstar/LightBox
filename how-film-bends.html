@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How film bends</title>
+<style>
+  :root { --bg: #eadec6; --paper: #f4ecdb; --ink: #3a2f20; --soft: #7d6c52; --wine: #6b202c; --film: #1b1917; --lit: #fcf2dc; --line: #b8a888; --blue: #2f5f7a; --gold: #b07a22; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 ui-monospace, "SF Mono", Menlo, monospace; }
+  main { max-width: 1020px; margin: 0 auto; padding: 36px 20px 80px; }
+  h1 { font-size: 26px; letter-spacing: .04em; margin: 0 0 6px; }
+  .lead { color: var(--soft); margin: 0 0 28px; max-width: 70ch; }
+  nav { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0 0 30px; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
+  nav a { color: var(--wine); text-decoration: none; border-bottom: 1px solid transparent; }
+  nav a:hover { border-color: var(--wine); }
+  figure { margin: 0 0 34px; background: var(--paper); border: 1px solid var(--line); border-radius: 14px; padding: 18px 18px 14px; }
+  figure h2 { font-size: 15px; letter-spacing: .1em; text-transform: uppercase; margin: 0 0 4px; }
+  figure h2 span { color: var(--wine); margin-right: 8px; }
+  figcaption { color: var(--soft); font-size: 13px; margin: 6px 0 0; max-width: 90ch; }
+  svg { display: block; width: 100%; height: auto; }
+  svg text { font: 11px ui-monospace, "SF Mono", Menlo, monospace; fill: var(--ink); }
+  svg .soft { fill: var(--soft); }
+  svg .big { font-size: 13px; font-weight: 600; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px 22px; margin: 10px 0 4px; font-size: 12px; align-items: center; }
+  .controls label { display: flex; gap: 8px; align-items: center; }
+  .controls input[type=range] { width: 170px; accent-color: var(--wine); }
+  .controls output { min-width: 3.4em; text-align: right; }
+  .controls select { font: inherit; background: var(--lit); border: 1px solid var(--line); border-radius: 6px; padding: 2px 6px; color: var(--ink); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  td, th { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--soft); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; font-size: 11px; }
+  code { background: var(--lit); padding: 0 4px; border-radius: 4px; }
+  .back { font-size: 12px; margin-bottom: 20px; }
+  .back a { color: var(--wine); }
+</style>
+</head>
+<body>
+<main>
+  <div class="back"><a href="javascript:window.close()">close this page</a> · LightBox</div>
+  <h1>How film bends</h1>
+  <p class="lead">Film is thin, so when you push a strip lengthwise toward something that is holding it still, it does not slide: it buckles. Every figure below is drawn from the page's own numbers and functions (<code>lightbox/bend.js</code>), so what you see here is what the page does. Figures with sliders are live.</p>
+  <nav id="nav"></nav>
+  <div id="figs"></div>
+</main>
+
+<script type="module">
+import { BK, PERSP, EDGE_REACH, EDGE_SHRINK, EDGE_DARK, archHeight, lighting, overRim, placeBend, profile, seedBend } from "./lightbox/bend.js";
+
+const INK = "#3a2f20", SOFT = "#7d6c52", WINE = "#6b202c", BLUE = "#2f5f7a", GOLD = "#b07a22", LINE = "#b8a888", FILM = "#1b1917", LIT = "#fcf2dc";
+const f1 = (v) => (Math.round(v * 10) / 10).toString();
+const figs = document.getElementById("figs"), nav = document.getElementById("nav");
+let n = 0;
+function figure(id, title, caption, body) {
+  n++;
+  const el = document.createElement("figure");
+  el.id = id;
+  el.innerHTML = `<h2><span>${n}</span>${title}</h2><div class="body"></div><figcaption>${caption}</figcaption>`;
+  el.querySelector(".body").innerHTML = body;
+  figs.append(el);
+  nav.insertAdjacentHTML("beforeend", `<a href="#${id}">${n} ${title.split(":")[0]}</a>`);
+  return el;
+}
+const arrow = (x1, y1, x2, y2, c = INK, w = 1.6) => {
+  const a = Math.atan2(y2 - y1, x2 - x1), h = 7;
+  return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${c}" stroke-width="${w}"/><path d="M${x2} ${y2} L${x2 - h * Math.cos(a - .45)} ${y2 - h * Math.sin(a - .45)} L${x2 - h * Math.cos(a + .45)} ${y2 - h * Math.sin(a + .45)} Z" fill="${c}"/>`;
+};
+const dim = (x1, y1, x2, y2, label, c = SOFT, off = 0) => `<g stroke="${c}" stroke-width="1" fill="none"><line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/><line x1="${x1}" y1="${y1 - 4}" x2="${x1}" y2="${y1 + 4}"/><line x1="${x2}" y1="${y2 - 4}" x2="${x2}" y2="${y2 + 4}"/></g><text x="${(x1 + x2) / 2}" y="${(y1 + y2) / 2 - 6 + off}" text-anchor="middle" fill="${c}" style="fill:${c}">${label}</text>`;
+
+/* a plot: series of [x,y] points, axes ranges, labels */
+function plot({ w = 900, h = 300, x0, x1, y0, y1, xl, yl, series = [], vlines = [], hlines = [], notes = "" }) {
+  const L = 56, R = 16, T = 14, B = 40, pw = w - L - R, ph = h - T - B;
+  const X = (x) => L + ((x - x0) / (x1 - x0)) * pw, Y = (y) => T + ph - ((y - y0) / (y1 - y0)) * ph;
+  let s = `<svg viewBox="0 0 ${w} ${h}" role="img"><rect x="${L}" y="${T}" width="${pw}" height="${ph}" fill="#fbf6ea" stroke="${LINE}"/>`;
+  const tick = (min, max) => { const span = max - min, raw = span / 5, mag = Math.pow(10, Math.floor(Math.log10(raw))), st = [1, 2, 5, 10].map((k) => k * mag).find((v) => v >= raw); const out = []; for (let v = Math.ceil(min / st) * st; v <= max + 1e-9; v += st) out.push(v); return out; };
+  for (const v of tick(x0, x1)) s += `<line x1="${X(v)}" y1="${T}" x2="${X(v)}" y2="${T + ph}" stroke="${LINE}" stroke-width=".5" stroke-dasharray="2 3"/><text x="${X(v)}" y="${T + ph + 14}" text-anchor="middle" class="soft">${+v.toFixed(3)}</text>`;
+  for (const v of tick(y0, y1)) s += `<line x1="${L}" y1="${Y(v)}" x2="${L + pw}" y2="${Y(v)}" stroke="${LINE}" stroke-width=".5" stroke-dasharray="2 3"/><text x="${L - 6}" y="${Y(v) + 4}" text-anchor="end" class="soft">${+v.toFixed(3)}</text>`;
+  for (const hl of hlines) s += `<line x1="${L}" y1="${Y(hl.y)}" x2="${L + pw}" y2="${Y(hl.y)}" stroke="${hl.c || SOFT}" stroke-width="1.2" stroke-dasharray="6 4"/><text x="${L + pw - 4}" y="${Y(hl.y) - 4}" text-anchor="end" style="fill:${hl.c || SOFT}">${hl.t}</text>`;
+  vlines.forEach((vl, i) => { s += `<line x1="${X(vl.x)}" y1="${T}" x2="${X(vl.x)}" y2="${T + ph}" stroke="${vl.c || SOFT}" stroke-width="1.2" stroke-dasharray="6 4"/><text x="${X(vl.x) + 4}" y="${T + ph - 6 - (i % 2) * 14}" style="fill:${vl.c || SOFT}">${vl.t}</text>`; });
+  series.forEach((se) => {
+    const pts = se.pts.map(([x, y]) => `${X(x).toFixed(1)},${Y(y).toFixed(1)}`).join(" ");
+    s += `<polyline points="${pts}" fill="none" stroke="${se.c}" stroke-width="2.2" ${se.dash ? 'stroke-dasharray="5 4"' : ""} stroke-linejoin="round"/>`;
+  });
+  let lx = L + 10, ly = T + 16;
+  series.forEach((se) => { if (!se.t) return; const wd = 28 + se.t.length * 7.8; if (lx + wd > L + pw) { lx = L + 10; ly += 15; } s += `<text x="${lx}" y="${ly}" style="fill:${se.c}" class="big">— ${se.t}</text>`; lx += wd + 14; });
+  s += `<text x="${L + pw / 2}" y="${h - 6}" text-anchor="middle" class="soft">${xl}</text><text x="14" y="${T + ph / 2}" text-anchor="middle" transform="rotate(-90 14 ${T + ph / 2})" class="soft">${yl}</text>${notes}</svg>`;
+  return s;
+}
+
+/* a strip's bend state, set up exactly as the page does it */
+function makeBend(seedIndex, L, d, hand = 0) {
+  const bk = { d, a: 0, sign: 1, hand, pin: hand + L, L, cover: 1 };
+  seedBend(bk, (seedIndex + 1) * 0.6180339887 % 1);
+  placeBend(bk);
+  bk.a = d > 0 ? Math.min(BK.MAX, archHeight(d, (bk.t1 - bk.t0) * L)) : 0;
+  return bk;
+}
+
+/* ------------------------------------------------------------------------------------------------------------------------------ 1 */
+figure("setup", "The set-up: who holds what",
+  "The hand holds the strip at one point. The eyepiece rests on another part of it and holds that part still. The film between them, the free length L, is the only part that can move. The pin is the edge of the eyepiece nearest the hand.",
+  `<svg viewBox="0 0 900 380">
+    <rect x="395" y="30" width="110" height="330" fill="${FILM}" rx="3"/>
+    ${[0,1,2,3,4,5,6,7,8,9,10,11,12].map((i) => `<rect x="402" y="${42 + i * 25}" width="12" height="14" rx="3" fill="${LIT}"/><rect x="486" y="${42 + i * 25}" width="12" height="14" rx="3" fill="${LIT}"/>`).join("")}
+    <rect x="422" y="40" width="56" height="310" fill="#7a5a3c" opacity=".55"/>
+    <circle cx="450" cy="262" r="86" fill="#d8d0bd" fill-opacity=".55" stroke="${INK}" stroke-width="2"/>
+    <circle cx="450" cy="262" r="62" fill="${FILM}" fill-opacity=".85"/><circle cx="450" cy="262" r="44" fill="#e9e1cc" fill-opacity=".6"/>
+    <text x="450" y="266" text-anchor="middle" class="big" style="fill:#fff">eyepiece</text>
+    <circle cx="450" cy="62" r="9" fill="${WINE}" stroke="#fff" stroke-width="2"/><text x="524" y="58" class="big" style="fill:${WINE}">hand</text><text x="524" y="73" class="soft">holds the strip here</text>
+    ${arrow(450, 82, 450, 128, "#fff", 4)}${arrow(450, 82, 450, 128, WINE, 2.4)}<text x="524" y="112" style="fill:${WINE}" class="big">pushes toward the eyepiece</text>
+    <line x1="340" y1="62" x2="395" y2="62" stroke="${SOFT}" stroke-dasharray="3 3"/>
+    <line x1="340" y1="176" x2="515" y2="176" stroke="${BLUE}" stroke-width="1.6" stroke-dasharray="6 4"/>
+    <text x="524" y="180" style="fill:${BLUE}" class="big">pin = near edge of the eyepiece</text>
+    ${dim(330, 62, 330, 176, "", BLUE)}<text x="318" y="124" text-anchor="end" style="fill:${BLUE}" class="big">free length L</text>
+    <text x="318" y="140" text-anchor="end" class="soft">the only film that can move</text>
+    <rect x="395" y="176" width="110" height="172" fill="none"/>
+    <text x="568" y="266" class="soft">the eyepiece holds this part still:</text><text x="568" y="282" class="soft">it cannot slide, so pushing on the</text><text x="568" y="298" class="soft">free length has nowhere to go</text>
+    <text x="40" y="30" class="soft">sign = +1 when the hand is above the eyepiece,</text><text x="40" y="46" class="soft">−1 when it is below (the maths is mirrored)</text>
+    <text x="40" y="330" class="soft">the hand must be clear of the eyepiece:</text><text x="40" y="346" class="soft">at least 40 px beyond its edge</text>
+  </svg>`);
+
+/* ------------------------------------------------------------------------------------------------------------------------------ 2 */
+figure("which", "Which motions bend it",
+  "Only the lengthwise part of the hand's motion, measured against how far the eyepiece has moved, matters. Toward the eyepiece builds slack. Away from it throws slack out four times faster than it is built. Sideways does nothing to the bend.",
+  `<svg viewBox="0 0 900 250">
+    ${[["push toward the eyepiece", 150, "slack d grows by that much", "d += closing distance", WINE, "bends", `${arrow(44, -80, 44, -26, WINE, 3)}`],
+       ["move sideways", 450, "no lengthwise part", "nothing to bend", SOFT, "flat", `${arrow(-62, -80, -62 + 40, -80, SOFT, 3)}${arrow(62, -60, 62 - 40, -60, SOFT, 3)}`],
+       ["pull away", 750, `slack goes ${BK.AWAY}× faster than it came`, "film flat; it drags the eyepiece", BLUE, "flat", `${arrow(44, -34, 44, -88, BLUE, 3)}`]].map(([t, x, a, b, c, st, ar]) => `
+      <g transform="translate(${x} 0)">
+        <text y="22" text-anchor="middle" class="big" style="fill:${c}">${t}</text>
+        <g transform="translate(0 120)">
+          <rect x="-24" y="-90" width="48" height="110" fill="${FILM}" rx="2" opacity=".9"/>
+          <circle cx="0" cy="-90" r="6" fill="${c}"/>
+          <g transform="translate(0 0)">${ar}</g>
+          <circle cx="0" cy="40" r="26" fill="#d8d0bd" fill-opacity=".7" stroke="${INK}" stroke-width="1.5"/>
+        </g>
+        <text y="196" text-anchor="middle" style="fill:${c}" class="big">${a}</text>
+        <text y="214" text-anchor="middle" class="soft">${b}</text>
+      </g>`).join("")}
+  </svg>`);
+
+/* ------------------------------------------------------------------------------------------------------------------------------ 3 (live) */
+const f3 = figure("peak", "Slack becomes one peak",
+  "Side view along the strip. Hand at the left, eyepiece (the pin) at the right. The dotted line is the film flat and unbent. The free length shrinks by the slack d as the film lifts into one peak; the film beyond the peak has moved back by d. Move the sliders: this is drawn with the page's own shape functions.",
+  `<div class="controls">
+     <label>slack d <input id="p-d" type="range" min="0" max="105" value="48"><output id="o-d"></output> px</label>
+     <label>free length L <input id="p-L" type="range" min="120" max="700" value="380"><output id="o-L"></output> px</label>
+     <label>strip <select id="p-s">${[1,2,3,4,5,6].map((i) => `<option value="${i - 1}">strip ${i}</option>`).join("")}</select> (each has its own character)</label>
+   </div><div id="p-svg"></div><div id="p-read" class="soft" style="font-size:12px"></div>`);
+function drawPeak() {
+  const d = +document.getElementById("p-d").value, L = +document.getElementById("p-L").value, si = +document.getElementById("p-s").value;
+  const dd = Math.min(d, BK.SLACK_SHARE * L, BK.SLACK_MAX);
+  const bk = makeBend(si, L, dd);
+  document.getElementById("o-d").textContent = f1(dd); document.getElementById("o-L").textContent = L;
+  const W = 900, H = 300, ox = 60, sc = (W - 2 * ox) / (L + 110), gy = 230, ez = 3;
+  let film = "", flat = `<line x1="${ox}" y1="${gy}" x2="${ox + (L + 90) * sc}" y2="${gy}" stroke="${SOFT}" stroke-dasharray="2 4"/>`;
+  const pts = [];
+  for (let y = 0; y <= L + 90; y += 2) { const p = profile(bk, y); pts.push(`${(ox + (y + p.by) * sc).toFixed(1)},${(gy - p.z * sc * 1.6).toFixed(1)}`); }
+  film = `<polyline points="${pts.join(" ")}" fill="none" stroke="${FILM}" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>`;
+  const hx = ox, ex = ox + (L + profile(bk, L).by) * sc, x0 = ox + bk.t0 * L * sc, x1 = ox + (bk.t1 * L + profile(bk, bk.t1 * L).by) * sc;
+  const peakY = gy - bk.a * bk.amp * sc * 1.6;
+  document.getElementById("p-svg").innerHTML = `<svg viewBox="0 0 ${W} ${H}">
+    ${flat}${film}
+    <circle cx="${hx}" cy="${gy}" r="8" fill="${WINE}"/><text x="${hx}" y="${gy + 26}" text-anchor="middle" style="fill:${WINE}" class="big">hand</text>
+    <rect x="${ex}" y="${gy - 4}" width="${(90) * sc}" height="14" fill="#d8d0bd" stroke="${INK}"/><text x="${ex + 45 * sc}" y="${gy + 26}" text-anchor="middle" class="big">eyepiece</text>
+    <line x1="${ex}" y1="${gy - 30}" x2="${ex}" y2="${gy + 4}" stroke="${BLUE}" stroke-dasharray="4 3"/><text x="${ex + 5}" y="${gy - 34}" style="fill:${BLUE}">pin</text>
+    ${dim(hx, 270, ex, 270, `free length L = ${L} px → ${f1(L - dd)} px of straight run`, BLUE)}
+    ${dim(x0 + 0, 40, x1, 40, `wave: ${f1((bk.t1 - bk.t0) * L)} px  (${Math.round((bk.t1 - bk.t0) * 100)}% of L)`, GOLD)}
+    ${bk.a > 0.5 ? `<line x1="${(x0 + x1) / 2}" y1="${gy}" x2="${(x0 + x1) / 2}" y2="${peakY}" stroke="${WINE}" stroke-width="1.2" stroke-dasharray="3 3"/><text x="${(x0 + x1) / 2 + 8}" y="${(gy + peakY) / 2}" style="fill:${WINE}" class="big">peak ${f1(bk.a * bk.amp)} px</text>` : ""}
+    <text x="${ox}" y="20" class="soft">(heights drawn 1.6× so a low peak is visible)</text>
+  </svg>`;
+  document.getElementById("p-read").textContent = `slack ${f1(dd)} px · peak ${f1(bk.a * bk.amp)} px = (2/π)·√(slack × wave) × this strip's height factor ${f1(bk.amp)} · wave sits ${Math.round(bk.t0 * 100)}%–${Math.round(bk.t1 * 100)}% of the way from hand to eyepiece · film beyond the wave has moved ${f1(dd)} px toward the hand`;
+}
+["p-d", "p-L", "p-s"].forEach((id) => document.getElementById(id).addEventListener("input", drawPeak));
+drawPeak();
+
+/* ------------------------------------------------------------------------------------------------------------------------------ 4 */
+{
+  const series = [150, 300, 500, 700].map((L, i) => ({ t: `L = ${L}`, c: [BLUE, WINE, GOLD, INK][i], pts: Array.from({ length: 106 }, (_, d) => [d, Math.min(BK.MAX, archHeight(Math.min(d, BK.SLACK_SHARE * L), 0.7 * L))]) }));
+  figure("height", "Why that height: the film keeps its length",
+    "Film does not stretch. A flat run of length ℓ that has to fit into ℓ − d must rise into an arch, and for a smooth bow the extra length is about π²A²/4ℓ. Setting that equal to the slack d gives the height A = (2/π)·√(d·ℓ). So a little slack makes a surprisingly tall peak, and the same slack makes a taller peak on a longer wave. The page never lets a peak pass " + BK.MAX + " px. Curves: wave = 70% of L.",
+    `<svg viewBox="0 0 900 150">
+       <line x1="60" y1="110" x2="400" y2="110" stroke="${SOFT}" stroke-dasharray="2 4"/>
+       <line x1="60" y1="60" x2="400" y2="60" stroke="${FILM}" stroke-width="5"/><text x="60" y="48" class="soft">flat: length ℓ</text><rect x="50" y="53" width="14" height="14" fill="${WINE}" opacity=".0"/>
+       <path d="M60 130 C 130 130, 150 60, 230 60 S 330 130, 360 130" fill="none" stroke="none"/>
+       <path d="M450 110 C 520 110, 540 40, 620 40 S 720 110, 770 110" fill="none" stroke="${FILM}" stroke-width="5"/>
+       <line x1="450" y1="125" x2="770" y2="125" stroke="${SOFT}"/><text x="610" y="142" text-anchor="middle" class="soft">straight run = ℓ − d</text>
+       ${arrow(620, 110, 620, 44, WINE, 1.5)}<text x="630" y="82" style="fill:${WINE}" class="big">A = (2/π)·√(d·ℓ)</text>
+       <text x="60" y="130" class="soft">same film length, shorter run → it has to rise</text>
+     </svg>` +
+    plot({ x0: 0, x1: 105, y0: 0, y1: 90, xl: "slack d (px)", yl: "peak height (px)", series, hlines: [{ y: BK.MAX, t: `most a peak gets: ${BK.MAX} px`, c: WINE }] }));
+}
+
+/* ------------------------------------------------------------------------------------------------------------------------------ 5 */
+{
+  const make = (si, L) => { const bk = makeBend(si, L, 40); return { bk, wl: (bk.t1 - bk.t0) * L }; };
+  const ser = [0, 2, 4].map((si, i) => ({ t: `strip ${si + 1}`, c: [BLUE, WINE, GOLD][i], pts: Array.from({ length: 30 }, (_, k) => { const L = 100 + k * 22; return [L, make(si, L).wl]; }) }));
+  ser.push({ t: "= L (whole free length)", c: SOFT, dash: true, pts: [[100, 100], [740, 740]] });
+  const bars = [0, 2, 4].map((si, i) => { const L = 400, bk = makeBend(si, L, 40); return `<g transform="translate(0 ${i * 38})"><rect x="110" y="6" width="730" height="14" fill="#e6dcc6"/><rect x="${110 + bk.t0 * 730}" y="2" width="${(bk.t1 - bk.t0) * 730}" height="22" fill="${[BLUE, WINE, GOLD][i]}" opacity=".8" rx="4"/><text x="100" y="19" text-anchor="end" class="big">strip ${si + 1}</text><text x="${110 + (bk.t0 + bk.t1) * 365}" y="19" text-anchor="middle" style="fill:#fff" class="big">wave</text></g>`; }).join("");
+  figure("wavelength", "The wave is shorter than the free length, and sits wherever it likes",
+    "The wavelength grows with the distance between hand and eyepiece (the longer the free length, the longer the wave), but it is always shorter than that distance, and each strip puts its wave at its own place within it. The film either side of the wave lies flat. Top: where the wave sits in a free length of 400 px for three strips (hand at left, eyepiece at right).",
+    `<svg viewBox="0 0 900 130"><text x="60" y="-2" class="soft"></text>${bars}<text x="110" y="124" class="soft">hand</text><text x="840" y="124" text-anchor="end" class="soft">eyepiece (pin)</text></svg>` +
+    plot({ x0: 100, x1: 740, y0: 0, y1: 860, xl: "free length L (px)", yl: "wavelength (px)", series: ser }));
+}
+
+/* ------------------------------------------------------------------------------------------------------------------------------ 6 */
+function simulate(L = 360, mass = 1, tEnd = 2600) {
+  const dt = 16, out = [], v = 0.25;                    // px per ms: a brisk push
+  let d = 0, a = 0;
+  const wl = 0.7 * L;
+  for (let t = 0; t <= tEnd; t += dt) {
+    const pushing = t < 900, held = t < 1500;
+    if (pushing) d += v * dt; else d *= Math.exp(-dt / (held ? BK.HELD_RELAX : BK.RELAX));
+    d = Math.min(d, BK.SLACK_SHARE * L, BK.SLACK_MAX);
+    const target = d > 0.02 ? Math.min(BK.MAX, archHeight(d, wl)) : 0;
+    a += (target - a) * (1 - Math.exp(-dt / BK.SMOOTH));
+    out.push([t / 1000, d, a]);
+  }
+  return out;
+}
+{
+  const sim = simulate();
+  figure("life", "The life of one bend: push, hold, let go",
+    `While you push, slack d builds as fast as you close the gap. If you stop pushing but keep holding, it slowly slides out (${BK.HELD_RELAX} ms time constant). Once you let go it drains quickly (${BK.RELAX} ms). The peak follows the slack with a short lag (${BK.SMOOTH} ms), which is why it rises quickly, holds, and settles. (This chart leaves the eyepiece fixed; figure 7 is what happens if it gives way.)`,
+    plot({ x0: 0, x1: 2.6, y0: 0, y1: 125, xl: "time (s)", yl: "px", series: [{ t: "slack d", c: BLUE, pts: sim.map(([t, d]) => [t, d]) }, { t: "peak height", c: WINE, pts: sim.map(([t, , a]) => [t, a]) }],
+      vlines: [{ x: 0.9, t: "stop pushing", c: SOFT }, { x: 1.5, t: "let go", c: GOLD }], hlines: [{ y: BK.SLACK_SHARE * 360, t: `cap: ${BK.SLACK_SHARE} × L = ${Math.round(BK.SLACK_SHARE * 360)} px`, c: SOFT }] }));
+}
+
+/* ------------------------------------------------------------------------------------------------------------------------------ 7 */
+{
+  const masses = [0.5, 1, 2, 4];
+  const ser = masses.map((m, i) => ({ t: `eyepiece weight ${m}`, c: [GOLD, WINE, BLUE, INK][i], pts: [[0, 0], [BK.SLACK_MAX, (BK.K * BK.SLACK_MAX) / m * 1000]] }));
+  figure("giveway", "When the eyepiece gives way",
+    `The stored slack pushes the eyepiece away from the hand with an acceleration of K·d ÷ weight. The eyepiece resists with friction MU (times how much of it the strip carries). Where a line crosses the dashed friction line the eyepiece starts to move: slack = MU × weight ÷ K = ${f1(BK.MU / BK.K)} px × weight. A heavier eyepiece needs more slack, so the peak gets taller before it moves. When it moves, the slack is used up and the peak falls back, and the film pushes the eyepiece on a little.`,
+    plot({ x0: 0, x1: BK.SLACK_MAX, y0: 0, y1: 5, xl: "stored slack d (px)", yl: "acceleration (×10⁻³ px/ms²)", series: ser, hlines: [{ y: BK.MU * 1000, t: `friction MU = ${BK.MU * 1000}`, c: WINE }],
+      vlines: masses.map((m) => ({ x: (BK.MU * m) / BK.K, t: `${f1((BK.MU * m) / BK.K)} px`, c: LINE })).filter((v) => v.x < BK.SLACK_MAX) }));
+}
+
+/* ------------------------------------------------------------------------------------------------------------------------------ 8 */
+figure("draw", "How a bent strip is drawn",
+  "The strip is first drawn flat once. Then it is cut into thin slices along its length. Each slice is moved lengthwise by the film's arc shift (so the film keeps its length) and scaled up a little by how high it is (seen from above, the lifted film is closer: 1 + " + PERSP + " × height). The light on each slice then comes from the slope there (figure 9), and the whole strip is drawn in its own place in the stack, so the strips above and below it keep their order.",
+  `<svg viewBox="0 0 900 250">
+    ${[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map((i) => `<rect x="${50 + i * 16}" y="40" width="14" height="70" fill="${FILM}"/>`).join("")}
+    <text x="50" y="30" class="big">1 · flat strip</text><text x="50" y="130" class="soft">drawn once</text>
+    ${arrow(255, 75, 295, 75, SOFT)}
+    ${[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map((i) => { const z = 26 * Math.sin(Math.PI * (i + 0.5) / 12), by = -i * 0; return `<rect x="${310 + i * 16}" y="${110 - z - 35}" width="14" height="${70}" fill="${FILM}" transform="translate(${by} 0)"/>`; }).join("")}
+    <text x="310" y="30" class="big">2 · cut into slices</text><text x="310" y="152" class="soft">each slice: shift + scale</text>
+    ${arrow(520, 75, 560, 75, SOFT)}
+    <path d="M575 110 C 630 110, 640 50, 690 50 S 750 110, 800 110" fill="none" stroke="${FILM}" stroke-width="12"/>
+    <path d="M590 108 C 632 108, 644 62, 668 54" fill="none" stroke="#ffe9c0" stroke-opacity=".55" stroke-width="10" stroke-linecap="round"/>
+    <path d="M652 58 C 664 52, 676 49, 688 49" fill="none" stroke="#fffdf8" stroke-opacity=".9" stroke-width="5" stroke-linecap="round"/>
+    <path d="M718 62 C 740 82, 756 108, 796 108" fill="none" stroke="#000" stroke-opacity=".6" stroke-width="12" stroke-linecap="round"/>
+    <text x="580" y="140" class="soft">lit side brighter · far side darker · glossy sheen</text>
+    <text x="575" y="30" class="big">3 · light from the slope</text>
+    <text x="50" y="190" class="big">4 · shadow thrown to the lower right</text>
+    <path d="M60 230 C 110 230, 120 200, 170 200 S 230 230, 280 230" fill="none" stroke="${FILM}" stroke-width="6"/>
+    <path d="M60 238 C 125 238, 140 218, 195 218 S 262 238, 320 238" fill="none" stroke="#000" stroke-opacity=".22" stroke-width="12" stroke-linecap="round"/>
+    ${arrow(170, 205, 196, 222, WINE, 1.5)}<text x="300" y="214" class="soft">offset = (0.85, 1.15) × height</text>
+    <g transform="translate(560 150)"><rect x="0" y="22" width="26" height="62" fill="${FILM}" opacity=".6"/><rect x="22" y="12" width="26" height="62" fill="${FILM}" opacity=".6"/><path d="M44 66 C 56 66, 58 22, 70 22 S 84 66, 96 66" fill="none" stroke="${FILM}" stroke-width="9"/></g>
+    <text x="560" y="190" class="big" transform="translate(150 0)">5 · in its own place in the stack</text><text x="710" y="208" class="soft">over strips below it, under strips above it;</text><text x="710" y="224" class="soft">see-through by density where it overlaps film</text>
+  </svg>`);
+
+/* ------------------------------------------------------------------------------------------------------------------------------ 9 */
+{
+  const sl = Array.from({ length: 57 }, (_, i) => -0.7 + (i * 1.4) / 56);
+  const col = (k) => ({ dark: "#3a1a10", diff: GOLD, spec: "#9bb7c4" }[k]);
+  const bk = makeBend(1, 380, 55);
+  const slices = []; const H = 130, base = 150, W = 900, ox = 70, sx = (W - 2 * ox) / 470;
+  for (let y = 0; y < 470; y += 3) { const p = profile(bk, y), q = profile(bk, y + 3), lg = lighting(p.dz, p.z, 0); const x1 = ox + (y + p.by) * sx, x2 = ox + (y + 3 + q.by) * sx + 1; slices.push(`<line x1="${x1.toFixed(1)}" y1="${(base - p.z * 1.6).toFixed(1)}" x2="${x2.toFixed(1)}" y2="${(base - q.z * 1.6).toFixed(1)}" stroke="${FILM}" stroke-width="12"/><line x1="${x1.toFixed(1)}" y1="${(base - p.z * 1.6).toFixed(1)}" x2="${x2.toFixed(1)}" y2="${(base - q.z * 1.6).toFixed(1)}" stroke="rgb(${lg.spec > 0.02 ? "255,253,248" : lg.diff > 0.01 ? "255,244,222" : "14,8,2"})" stroke-opacity="${Math.max(lg.spec, lg.diff, lg.dark * 0.9).toFixed(2)}" stroke-width="12"/>`); }
+  figure("light", "How the light plays on the bend (glossy film)",
+    "Light comes from the upper left. The side of the peak that faces the light (the film rising away from the hand, slope > 0) is brightened a little. The side that faces away (falling) is darkened clearly. A narrow white sheen sits where the surface mirrors the light toward the eye, like the glint on glossy film. Nothing shows until the film is lifted a few px (a smooth ramp over the first 16 px), and each curve is blended along the strip so there are no seams. The strip below is coloured by exactly these numbers.",
+    `<svg viewBox="0 0 ${W} 190">${slices.join("")}<text x="${ox}" y="24" class="big">a peak, shaded by its slope</text><text x="${ox}" y="180" class="soft">hand</text><text x="${W - ox}" y="180" text-anchor="end" class="soft">eyepiece</text></svg>` +
+    plot({ x0: -0.7, x1: 0.7, y0: 0, y1: 0.9, xl: "slope of the film  (← falling, away from the light | rising, toward the light →)", yl: "amount",
+      series: [["dark", "darkening (far side)"], ["diff", "brightening (lit side)"], ["spec", "gloss sheen"]].map(([k, t]) => ({ t, c: col(k), pts: sl.map((s) => [s, lighting(s, 40, 0)[k]]) })) }));
+}
+
+/* ------------------------------------------------------------------------------------------------------------------------------ 10 */
+{
+  const sim = simulate(360, 1, 3800);
+  let pk = 0; sim.forEach(([, , a]) => { if (a > pk) pk = a; });
+  const tPeak = sim.find(([, , a]) => a >= 0.98 * pk)[0] + 0.14;                          // it has stopped rising for 140 ms
+  const tDown = sim.find(([t, , a]) => t > 1.5 && a < 6)?.[0] ?? 2.6;                      // and has fallen back down
+  figure("sound", "The sound: one wop per peak",
+    `A single "wop" plays when the peak has reached its top, as loud as the peak is tall (height ÷ ${BK.MAX}). When the film is let go and the peak falls back down, a lighter wop plays (× 0.7). Nothing repeats. The film crackle that comes from bending is turned right down (× 0.15) so it is the wop you hear.`,
+    plot({ x0: 0, x1: 3.8, y0: 0, y1: 85, xl: "time (s)", yl: "peak height (px)", series: [{ t: "peak height", c: WINE, pts: sim.map(([t, , a]) => [t, a]) }],
+      vlines: [{ x: tPeak, t: `WOP · volume ${Math.round((pk / BK.MAX) * 100)}%`, c: GOLD }, { x: tDown, t: "lighter wop as it lands", c: BLUE }],
+      notes: "" }));
+}
+
+/* ------------------------------------------------------------------------------------------------------------------------------ 11 */
+{
+  const pts = Array.from({ length: 80 }, (_, i) => { const d = (i * EDGE_REACH * 1.2) / 79; const o = overRim(10 - d, 500, 2000, 1000, 10); return [d, o]; });
+  figure("rim", "Film hanging over the rim of the light box",
+    `Any strip, bent or not, that hangs over the rim of the lit panel curves away: the further past the rim, the smaller it looks (down to ${100 - EDGE_SHRINK * 100}%) and the darker it gets (up to ${EDGE_DARK * 100}% shade), easing in smoothly over ${EDGE_REACH} px. It looks as if the film bends down over the edge of the box.`,
+    `<svg viewBox="0 0 900 130"><rect x="40" y="20" width="440" height="90" rx="20" fill="#e9dcc2"/><text x="60" y="44" class="soft">lit panel</text>
+      ${Array.from({ length: 14 }, (_, i) => { const x = 380 + i * 36, o = i < 3 ? 0 : Math.min(1, (i - 2) / 10); return `<rect x="${x}" y="${50 + o * 4}" width="32" height="${40 - o * 8}" fill="rgb(${Math.round(27 - 0)},${25},${23})" opacity="${1 - o * 0.55}"/>`; }).join("")}
+      <line x1="480" y1="10" x2="480" y2="120" stroke="${WINE}" stroke-dasharray="4 3"/><text x="486" y="22" style="fill:${WINE}" class="big">rim</text><text x="640" y="116" class="soft">smaller and darker the further past it</text></svg>` +
+    plot({ x0: 0, x1: EDGE_REACH * 1.2, y0: 0, y1: 1.25, xl: "distance past the rim (px)", yl: "how far it has curved away", series: [{ t: "curve-away", c: WINE, pts }, { t: "size", c: BLUE, pts: pts.map(([x, o]) => [x, 1 - EDGE_SHRINK * o]) }, { t: "brightness", c: GOLD, pts: pts.map(([x, o]) => [x, 1 - EDGE_DARK * o]) }] }));
+}
+
+/* ------------------------------------------------------------------------------------------------------------------------------ constants */
+figure("numbers", "The numbers",
+  "All of these live in lightbox/bend.js, so this page and the page it explains cannot disagree.",
+  `<table><tr><th>name</th><th>value</th><th>what it does</th></tr>
+    ${[["BK.K", BK.K, "acceleration the stored slack gives the eyepiece, per px of slack (÷ eyepiece weight)"], ["BK.MU", BK.MU, "the eyepiece's friction: the push it must beat before it moves"], ["BK.MAX", BK.MAX + " px", "tallest a peak gets"], ["BK.SLACK_MAX", BK.SLACK_MAX + " px", "most slack a strip stores"], ["BK.SLACK_SHARE", BK.SLACK_SHARE, "…and never more than this share of the free length"], ["BK.AWAY", BK.AWAY + "×", "pulling away takes up slack this much faster than pushing makes it"], ["BK.HELD_RELAX", BK.HELD_RELAX + " ms", "slack drains this slowly while you hold the strip but stop pushing"], ["BK.RELAX", BK.RELAX + " ms", "…and this quickly once you let go"], ["BK.SMOOTH", BK.SMOOTH + " ms", "how closely the peak follows the slack"], ["PERSP", PERSP, "how much bigger a lifted part looks, per px of height"], ["EDGE_REACH", EDGE_REACH + " px", "distance past the rim for film to be fully curved away"], ["EDGE_SHRINK", EDGE_SHRINK, "how much smaller fully curved-away film looks"], ["EDGE_DARK", EDGE_DARK, "how much darker"]].map(([a, b, c]) => `<tr><td><code>${a}</code></td><td>${b}</td><td>${c}</td></tr>`).join("")}
+  </table>`);
+</script>
+</body>
+</html>

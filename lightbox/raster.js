@@ -15,7 +15,7 @@
  */
 
 import { paintHoles } from "./bleed.js";
-import { EDGE_DARK, EDGE_SHRINK, PERSP, overRim, profile } from "./bend.js";
+import { EDGE_SHRINK, PERSP, lighting, overRim, profile } from "./bend.js";
 import { paintSocketButton } from "./socket-buttons/buttons.js";
 
 const ORANGE = [217 / 255, 132 / 255, 58 / 255]; // film-mask cast, matches .lb-neg .lb-img::after
@@ -515,15 +515,9 @@ function bentScratch(scene, s, mode, kk, variant) {
     //  - the side of the arch that faces the light is a little brighter, the side that faces away clearly darker;
     //  - a narrow specular sheen where the surface mirrors the light toward the eye (a soft white band, the glint on a glossy surface);
     //  - film curving away over the rim of the panel darker still.
-    const sl = Math.max(-0.7, Math.min(0.7, pc.dz));
-    const lf = Math.min(1, pc.z / 16), lift = lf * lf * (3 - 2 * lf);                                   // nothing to catch the light until it is lifted a little
-    const away = Math.max(0, -sl) * 1.5 * lift;
-    const d = Math.min(0.7, away + EDGE_DARK * o);
-    const diff = Math.max(0, sl) * 0.7 * lift;
-    const gl = (sl - 0.2) / 0.14, gl2 = (sl + 0.34) / 0.14;
-    const spec = (0.95 * Math.exp(-gl * gl) + 0.22 * Math.exp(-gl2 * gl2)) * lift;
+    const L = lighting(pc.dz, pc.z, o);
     const at = BENT_MARGIN_Y + (dy0 + dy1) / 2;
-    dark.push([at, d]); light.push([at, Math.min(0.3, diff)]); gloss.push([at, Math.min(0.85, spec)]);
+    dark.push([at, L.dark]); light.push([at, L.diff]); gloss.push([at, L.spec]);
     yTop = Math.min(yTop, BENT_MARGIN_Y + dy0); yBot = Math.max(yBot, BENT_MARGIN_Y + dy1);
   }
   // Blend each lighting curve into itself over a short distance either side, so where the peak begins and ends the highlight and the shadow

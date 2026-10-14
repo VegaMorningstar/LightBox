@@ -149,6 +149,8 @@ function buildControls(rows, { onOrganize, onButton, sliders = true } = {}) {
 
   const toggle = createSocketButton({ icon: ICONS.sliders, label: "Sliders", onPress: onButton });
   toggle.setAttribute("aria-expanded", "false");
+  // (for the sliders' audience) a page of diagrams explaining the film bending, in a new tab
+  const how = createSocketButton({ icon: ICONS.wave, label: "How film bends: diagrams", onClick: () => window.open("how-film-bends.html", "_blank", "noopener") });
   const organize = createSocketButton({
     icon: ICONS.reset,
     label: "Organize: put the film back where it started",
@@ -196,7 +198,7 @@ function buildControls(rows, { onOrganize, onButton, sliders = true } = {}) {
     if (sliders) panel.append(label);
   }
   nav.append(...(sliders ? [panel] : []));
-  return { wrap: nav, corner: [...(sliders ? [toggle] : []), organize], setters };
+  return { wrap: nav, corner: [...(sliders ? [how, toggle] : []), organize], setters };
 }
 
 export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFade = 0.85, volumes = {}, outerGlass = {}, filmDrag = 1, filmFlutter = 1, stacking = 1, panelFalloff = 1.25, panelGlow = 1, panelGrain = 1, lightBleed = 1, lightSeep = 1.6, seepSpread = 10, size, controls = true, sliders = true } = {}) {

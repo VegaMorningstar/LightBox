@@ -44,6 +44,8 @@ const ICON_DATA = {
     fills: ["M19.64 9.45L19.28 4.72L14.90 9.10Z", "M4.36 14.55L4.72 19.28L9.10 14.90Z"],
     circles: [], width: 2.5,
   },
+  // a wave: the shape of bent film (opens the diagrams explaining it)
+  wave: { strokes: ["M2.5 16.5h4.5c2.5 0 2.5-9 5-9s2.5 9 5 9h4.5"], fills: [], circles: [], width: 2.4 },
   // three sliders
   sliders: { strokes: ["M4 7h16M4 12h16M4 17h16"], fills: [], circles: [[9, 7, 2.4], [15.5, 12, 2.4], [8, 17, 2.4]], width: 2 },
 };

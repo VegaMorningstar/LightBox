@@ -15,6 +15,33 @@ export const EDGE_REACH = 140;       // px: how far past the panel's rim film ha
 export const EDGE_SHRINK = 0.2;      // how much smaller it looks, curved fully away
 export const EDGE_DARK = 0.6;        // and how much darker
 
+/* The numbers behind the bend, kept together so film.js and the explainer page (how-film-bends.html) use the very same ones. */
+export const BK = {
+  K: 0.00004,          // acceleration the stored slack gives the eyepiece, per px of slack (divided by the eyepiece's weight)
+  MU: 0.0012,          // the eyepiece's friction on the film: the acceleration it takes before it starts to move (times how much of it the strip carries)
+  RELAX: 220,          // ms: how fast slack slides away once the film is let go
+  HELD_RELAX: 900,     // ms: ...and while it is still held, but no longer pushed
+  MAX: 70,             // px: the tallest a peak gets
+  SLACK_MAX: 105,      // px: the most slack a strip stores
+  SLACK_SHARE: 0.35,   // ...and never more than this share of the free length
+  AWAY: 4,             // pulling away takes up slack this many times faster than pushing makes it
+  SMOOTH: 40,          // ms: how quickly the peak follows the slack
+};
+
+/* How the light plays on a bent strip, at one place along it. sl: the slope of the film there (along the strip, +1 = rising toward
+   the viewer's down, light from the upper left), z: its height in px, o: how far it has curved away over the rim (0..1).
+   Returns the amounts of: dark (shade), diff (lit side brightening) and spec (the glossy sheen), each 0..1. */
+export function lighting(sl, z, o = 0) {
+  sl = Math.max(-0.7, Math.min(0.7, sl));
+  const lf = Math.min(1, z / 16), lift = lf * lf * (3 - 2 * lf);        // nothing to catch the light until it is lifted a little
+  const away = Math.max(0, -sl) * 1.5 * lift;
+  const dark = Math.min(0.7, away + EDGE_DARK * o);
+  const diff = Math.min(0.3, Math.max(0, sl) * 0.7 * lift);
+  const gl = (sl - 0.2) / 0.14, gl2 = (sl + 0.34) / 0.14;
+  const spec = Math.min(0.85, (0.95 * Math.exp(-gl * gl) + 0.22 * Math.exp(-gl2 * gl2)) * lift);
+  return { dark, diff, spec };
+}
+
 /* How one arch is shaped. No two bends are alike: each strip has its own lean (the peak sits nearer one end), its own height and a
    faint ripple, set from `bk.seed` (a number 0..1 per strip, kept for the strip's life). The shape is 0 at the hand and at the holder. */
 function arch(bk, u) { return u > 0 && u < 1 ? Math.abs(Math.sin(Math.PI * Math.pow(u, bk.g))) : 0; }

@@ -30,7 +30,7 @@
  */
 
 import { stripQuad } from "./raster.js";
-import { archHeight, overRim, placeBend, profile, seedBend } from "./bend.js";
+import { BK, archHeight, overRim, placeBend, profile, seedBend } from "./bend.js";
 
 const V0 = 0.8;               // eyepiece speed (px per ms) where the film starts to be dragged
 const V1 = 1.9;               // ...and where it is dragged fully
@@ -44,10 +44,6 @@ const CARRY_GATE = 0.6;       // how firmly an eyepiece that is itself being car
 const CARRY_K = 0.007;        // per ms: how firmly a carried eyepiece drags the other strips beneath it (times the Carried slider)
 // bending: film is thin, so when it is pushed lengthwise against something that holds it (the eyepiece resting on it) it does not slide,
 // it buckles. See PHYSICS.md §4.9.
-const BK_K = 0.00004;         // acceleration the stored slack gives the eyepiece, per px of slack (divided by the eyepiece's weight)
-const BK_MU = 0.0012;         // the eyepiece's friction on the film: the acceleration it takes before it starts to move (times how much of it the strip carries)
-const BK_RELAX = 220;         // ms: how fast slack slides away once the film is let go
-const BK_MAX = 70;            // px: the tallest an arch gets
 const SLAP = 0.35;            // share of the eyepiece's speed it hands to the film under it the moment it lands
 const NUDGE_END = 0.2;        // furthest an end of a strip is swung by the eyepiece, in frame widths (the turn is limited to match)
 const SPIN_RUB = 0.9;         // how stubbornly a strip resists being turned by the eyepiece (a light rub turns it more readily than a firm grab)
@@ -518,36 +514,36 @@ export function createFilm(scene, cfg = { push: 1, flutter: 1, rub: 0.5, eyeLoad
           if (bk.d <= 0.05 || sign === bk.sign) {
             bk.sign = sign; bk.hand = held.gy; bk.pin = sp - sign * half; bk.L = Math.max(1, Math.abs(bk.pin - bk.hand)); bk.cover = Math.min(1, cov.n / cov.tot / 0.3);
             // pulling away from the eyepiece never bends the film: any slack goes at once, and the film just drags the eyepiece
-            bk.d = close < 0 ? Math.max(0, bk.d + close * 4) : Math.max(0, bk.d + close);
+            bk.d = close < 0 ? Math.max(0, bk.d + close * BK.AWAY) : Math.max(0, bk.d + close);
           }
         }
       }
       bk.hp = hp;
       // slack that is not being pushed on slides away (slowly while held, quickly once let go)
-      if (!(cov && close > 0)) bk.d *= Math.exp(-dtMs / (isHeld ? 900 : BK_RELAX));
+      if (!(cov && close > 0)) bk.d *= Math.exp(-dtMs / (isHeld ? BK.HELD_RELAX : BK.RELAX));
       if (bk.d > 0 && !cov && !isHeld) bk.d = Math.max(0, bk.d + 0);   // (released: only the decay above)
-      bk.d = Math.min(bk.d, BK_MAX * 1.5, 0.35 * bk.L);
+      bk.d = Math.min(bk.d, BK.SLACK_MAX, BK.SLACK_SHARE * bk.L);
       if (bk.d < 0.02) bk.d = 0;
       // what the slack does to the eyepiece: it pushes it away from the hand once the push beats the eyepiece's friction
       if (bk.d > 0.05 && bk.cover > 0 && (eye.down ?? 1) > 0.3) {
-        const acc = Math.max(0, (BK_K * (cfg.bendPush ?? 1) * bk.d) / mass - BK_MU * bk.cover);
+        const acc = Math.max(0, (BK.K * (cfg.bendPush ?? 1) * bk.d) / mass - BK.MU * bk.cover);
         eyePush.x += bk.sign * u[0] * acc; eyePush.y += bk.sign * u[1] * acc;
         if (!isHeld) { /* the film springs back as the eyepiece gives way */ }
       }
       // the shape: one arch for a short free length, two for a long one; its height follows the slack (arc length is kept)
       placeBend(bk);
-      const target = bk.d > 0 ? Math.min(BK_MAX, (cfg.bend ?? 1) * archHeight(bk.d, (bk.t1 - bk.t0) * bk.L)) : 0;
-      bk.a += (target - bk.a) * (1 - Math.exp(-dtMs / 40));
+      const target = bk.d > 0 ? Math.min(BK.MAX, (cfg.bend ?? 1) * archHeight(bk.d, (bk.t1 - bk.t0) * bk.L)) : 0;
+      bk.a += (target - bk.a) * (1 - Math.exp(-dtMs / BK.SMOOTH));
       if (bk.a < 0.05 && target === 0) bk.a = 0;
       // One wop for each peak, as loud as the peak is tall: it sounds when the arch has risen to its top (it stops rising, or begins to fall),
       // and a lighter one when it falls back down after being let go (or given way to)
       if (!bk.up && bk.a > 10) { bk.up = true; bk.sounded = false; bk.aPk = bk.a; bk.still = 0; }
       if (bk.up) {
         if (bk.a > bk.aPk + 0.3) { bk.aPk = bk.a; bk.still = 0; } else bk.still += dtMs;
-        if (!bk.sounded && (bk.a < bk.aPk - 3 || bk.still > 140)) { bk.sounded = true; bendEvents.push({ kind: "up", k: Math.min(1, bk.aPk / BK_MAX) }); }
+        if (!bk.sounded && (bk.a < bk.aPk - 3 || bk.still > 140)) { bk.sounded = true; bendEvents.push({ kind: "up", k: Math.min(1, bk.aPk / BK.MAX) }); }
         if (bk.a < 6) {
-          if (bk.sounded && !isHeld) bendEvents.push({ kind: "down", k: Math.min(1, 0.7 * bk.aPk / BK_MAX) });
-          else if (!bk.sounded) bendEvents.push({ kind: "up", k: Math.min(1, bk.aPk / BK_MAX) });
+          if (bk.sounded && !isHeld) bendEvents.push({ kind: "down", k: Math.min(1, 0.7 * bk.aPk / BK.MAX) });
+          else if (!bk.sounded) bendEvents.push({ kind: "up", k: Math.min(1, bk.aPk / BK.MAX) });
           bk.up = false;
         }
       }
