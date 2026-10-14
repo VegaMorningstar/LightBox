@@ -397,7 +397,7 @@ export function paintBendShadows(ctx, strips, W, H, x0 = 0, y0 = 0) {
     // where the film is higher or lower, and the scaling-up blurs the steps away.
     const ribbon = (zMin) => {
       const L = [], R = [];
-      for (let y = lo; y <= hi + 0.01; y += 1.5) {
+      for (let y = lo; y <= hi + 0.01; y += 1) {
         const p = profile(bk, y);
         if (p.z < zMin) { if (L.length) break; else continue; }
         const ox = p.z * 0.85, oy = p.z * 1.15, yy = y + p.by;
@@ -493,8 +493,8 @@ function bentScratch(scene, s, mode, kk, variant) {
   g.setTransform(kk, 0, 0, kk, 0, 0);
   g.imageSmoothingEnabled = true;
   const bk = s.bk;
-  const SLICE = 1.5;                                                        // each slice is about a pixel and a half of film: far finer than the eye can pick out
-  const N = Math.min(900, Math.max(40, Math.ceil(s.h / SLICE)));
+  const SLICE = 0.5;                                                        // each slice is half a pixel of film: far finer than the eye can pick out
+  const N = Math.min(3600, Math.max(40, Math.ceil(s.h / SLICE)));
   const topX = s.left + s.w / 2 + s.ox, topY = s.top + s.oy, ce = Math.cos(s.rot), se = Math.sin(s.rot);
   const edge = scene.edge, edgeK = scene.bendEdge ?? 1;
   const oAt = (y) => {
