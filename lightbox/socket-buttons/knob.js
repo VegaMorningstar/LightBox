@@ -12,13 +12,13 @@
  *   mountSocketCorner(container, [volume.el]);
  *   volume.set(1.4);                        // move it from outside (no sounds, no onInput)
  *
- * A knob turns by dragging round its centre (like a real one), or with the arrow keys. It sweeps 270 degrees from min to max, with the
+ * A knob turns by dragging round its centre (like a real one), or with the arrow keys. It sweeps a half circle (180 degrees) from min to max, with the
  * mark pointing straight up at the middle. Light is from the upper left, so the knurled rim turns but the sheen on the face stays put.
  */
 
 const CSS_URL = new URL("./knob.css", import.meta.url).href;
-const SWEEP = 135;            // degrees either side of straight up
-const STEPS = 20;             // clicks across the whole sweep
+const SWEEP = 90;             // degrees either side of straight up: a half circle, easy to set
+const STEPS = 12;             // clicks across the whole sweep
 const HOLD = 7;               // degrees of extra turn needed to break out of a detent
 
 function ensureStyles() {
@@ -36,7 +36,7 @@ function marks() {
       const a = ((-SWEEP + (2 * SWEEP * i) / STEPS) * Math.PI) / 180, major = i === 0 || i === STEPS || i === STEPS / 2;
       const r0 = 41.5, r1 = major ? 47.5 : 44.5;
       return `<line x1="${(Math.sin(a) * r0).toFixed(2)}" y1="${(-Math.cos(a) * r0).toFixed(2)}" x2="${(Math.sin(a) * r1).toFixed(2)}" y2="${(-Math.cos(a) * r1).toFixed(2)}" stroke-width="${major ? 1.5 : 1}"/>`;
-    }).join("") + `<g class="sb-knob-sign"><path d="M-40 47.5h8"/><path d="M32 47.5h8M36 43.5v8"/></g></svg>`;
+    }).join("") + `<g class="sb-knob-sign"><path d="M-45 19h8"/><path d="M37 19h8M41 15v8"/></g></svg>`;
   return svg;
 }
 
