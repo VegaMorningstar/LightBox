@@ -7,7 +7,7 @@
  *
  * Theme it with these variables, set on the button or on any ancestor:
  *   --sb-size   diameter (default 38px)      --sb-gap    space between buttons in a corner (12px)
- *   --sb-top, --sb-right   where a corner of buttons sits in its (positioned) container
+ *   --sb-top, --sb-right, --sb-left   where a corner of buttons sits in its (positioned) container
  *   --sb-ink    colour of the etched icon (#1e1916)
  */
 
@@ -18,8 +18,10 @@
   z-index: 5;
   display: flex;
   align-items: center;
-  gap: var(--sb-gap, 12px);
+  gap: var(--sb-gap, 14px);
 }
+
+.sb-corner-left { right: auto; left: var(--sb-left, 12px); top: calc(var(--sb-top, 12px) + 14px); }   /* (set a little lower than the buttons, clear of the panel's edge) */
 
 .sb-button {
   --size: var(--sb-size, 38px);

@@ -1,0 +1,73 @@
+/* socket-buttons: the rotary knob (see knob.js). Same socket as the push buttons: a lit lip on the lower right, a shaded one on the upper left.
+ * Theme with --sb-knob (diameter, default 58px) and the shared --sb-top / --sb-right / --sb-gap. */
+
+.sb-knob {
+  --size: var(--sb-knob, 58px);
+  --socket:
+    0 0 2.4px 2px rgba(58, 40, 22, .5),
+    1.2px 1.8px 2.4px 2.2px rgba(255, 252, 240, .85),
+    -.8px -1px 3px 2.2px rgba(70, 48, 26, .28),
+    2px 3px 6px 2px rgba(60, 40, 20, .15);
+  position: relative;
+  flex: none;
+  width: var(--size);
+  height: var(--size);
+  border-radius: 50%;
+  cursor: grab;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+  outline: none;
+  background: #1c150e;
+  /* it stands proud of the surface, so it casts a shadow toward the lower right (light from the upper left) */
+  box-shadow: 4px 6px 9px 1px rgba(40, 24, 8, .4), var(--socket), inset 0 0 3px 1px rgba(10, 6, 2, .5);
+}
+.sb-knob.is-turning { cursor: grabbing; }
+.sb-knob:focus-visible { outline: 1.5px solid rgba(42, 38, 34, .55); outline-offset: 9px; }
+.sb-knob[data-covered] { pointer-events: none; }
+
+/* the scale round it, on the surface */
+.sb-knob-sign path { stroke: rgba(46, 34, 20, .85); stroke-width: 2.8; fill: none; stroke-linecap: round; }   /* drawn as strokes, so they stay crisp and bold at any size */
+.sb-knob-marks {
+  position: absolute;
+  inset: -23%;
+  width: 146%;
+  height: 146%;
+  overflow: visible;
+  pointer-events: none;
+  stroke: rgba(54, 40, 24, .8);
+  stroke-linecap: round;
+}
+
+.sb-knob-turn, .sb-knob-face { position: absolute; border-radius: 50%; pointer-events: none; }
+
+/* the knurled rim: it turns with the knob */
+.sb-knob-turn:not(.sb-knob-mark) {
+  inset: 0;
+  background:
+    radial-gradient(circle, transparent 56%, rgba(0, 0, 0, .5) 100%),
+    repeating-conic-gradient(from 0deg, #8f8672 0deg 3.75deg, #3f382c 3.75deg 7.5deg);
+  box-shadow: inset 0 0 0 1px rgba(255, 245, 220, .18), inset 0 -2px 3px rgba(0, 0, 0, .5);
+}
+
+/* the brushed metal face: a fixed sheen (the light does not turn) over fine concentric grooves */
+.sb-knob-face {
+  inset: 6px;
+  background:
+    repeating-radial-gradient(circle, rgba(60, 48, 30, .07) 0 .6px, rgba(255, 255, 255, 0) .6px 1.6px),
+    conic-gradient(from 20deg, #efe6cc, #c7bb99 12%, #f6eed8 26%, #b7ab8b 42%, #efe6cc 58%, #c3b793 72%, #f4ecd6 86%, #efe6cc);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .6), inset 0 0 4px rgba(255, 255, 255, .5), inset 0 -1px 2px rgba(90, 70, 40, .3);
+}
+
+/* the mark: a dark bar from near the middle out toward the rim; it turns */
+.sb-knob-mark { inset: 0; }
+.sb-knob-mark::after {
+  content: "";
+  position: absolute;
+  left: calc(50% - 1.6px);
+  top: 15%;
+  width: 3.2px;
+  height: 28%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #4a3d2e, #1d160e 60%, #34291c);
+  box-shadow: .6px .8px 0 rgba(255, 250, 235, .55), -.4px -.5px 1px rgba(0, 0, 0, .3);
+}

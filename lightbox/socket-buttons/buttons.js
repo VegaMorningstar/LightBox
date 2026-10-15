@@ -122,11 +122,11 @@ export function createSocketButton({ icon, label = "", onClick, onPress } = {}) 
   return b;
 }
 
-/* Put buttons in a row in the container's top right corner. Returns the row element. */
-export function mountSocketCorner(container, buttons) {
+/* Put buttons in a row in the container's top right corner (side: "left" for the top left one). Returns the row element. */
+export function mountSocketCorner(container, buttons, { side = "right" } = {}) {
   ensureStyles();
   const row = document.createElement("div");
-  row.className = "sb-corner";
+  row.className = side === "left" ? "sb-corner sb-corner-left" : "sb-corner";
   row.append(...buttons);
   container.append(row);
   return row;

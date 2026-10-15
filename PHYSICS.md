@@ -226,6 +226,13 @@ the rim picture → buttons → film → dust → light seep and lit holes → p
   stays pressed in.
 - **The buttons lie on the panel, under the film.** Film slides over them and hides them. **A covered button cannot be pressed**; a
   press there grabs the film instead (`setCovered`, checked every frame against the strips).
+- **Dust lies on the board, never on the fittings**: the buttons, the knob and its markings are kept clear of dust, on the page and in the glass views (`clipOutButtons`).
+- **The volume knob** (`socket-buttons/knob.js`) sits in the top left corner of the panel and sets the page's overall (master) volume, 0 to 2×,
+  straight up = 1× (the normal level; the dial turns evenly through it, with no catch there). It is a rotary dial in the same socket: a knurled rim that turns, a brushed-metal face whose sheen
+  does not turn (the light is fixed), a dark mark, and a scale round it, **engraved into the surface** (a dark shaded wall on the upper left of each groove, a light lip on the lower right), with a − and a + standing where the two end ticks would be. It turns by dragging round its centre or with the arrow keys, sweeps a half circle (180°),
+  and **clicks like the eyepiece ring**: light ticks as it passes each step, a thud when it reaches an end. It stays where you left it on this device. Film covering it makes it unusable like the buttons,
+  and the glasses draw it too, with its engraved scale and its markings (`paintSocketKnob`). It stands proud of the surface, so it casts a shadow toward the
+  lower right (light from the upper left), on the page and in the glass views.
 - The buttons sit on the fully lit part of the panel above the film, inside the clear margin; never over the film at rest.
 - They are also drawn into the glass views, under the film, so the eyepiece shows them (`paintSocketButton`).
 - **The sliders panel closes on a press anywhere else** or on Escape (localhost only; the live page has only the reset button).
@@ -246,7 +253,7 @@ the rim picture → buttons → film → dust → light seep and lit holes → p
 
 - **Real recordings** of glass for lift and set-down (`audio/`); everything else synthesised. The synthesised versions are the
   fallback.
-- **Dial**: soft ticks as it turns (0.30), a distinct notch click and end-stop thud (0.60).
+- **Dial**: soft ticks as it turns (0.30), a distinct notch click and end-stop thud (0.60). The volume knob makes the same sounds.
 - **The slide sound** (0.01) plays only while the eyepiece or a strip actually moves over the board; **film crackle** (0.6) only
   where the eyepiece rubs film or a strip rides over another. Both are silent while the eyepiece is lifted.
 - **Lift** (0.60), **set-down** (0.15) and the **surface thump** (0.60) are three separate volumes; the thump plays alongside the
