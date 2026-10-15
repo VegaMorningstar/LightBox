@@ -194,18 +194,18 @@ the rim picture → buttons → film → dust → light seep and lit holes → p
 - **The bend is smooth and has nothing to do with the picture frames**: a bent strip is drawn as very thin slices (half a pixel of film
   each, `SLICE` in `raster.js`), each with its own scale and shift (`drawBentStrip`), so it reads as one continuous strip, never as pieces. The shadow
   outline and the light cut-outs for lit holes are stepped as finely. It is stiff, so it is one smooth bow, not a wobble.
-- **A bent strip is cut from a snapshot of itself and the film under it.** At rest the strip is drawn together with the strips beneath it, composited as they really are
-  (multiplied or faded onto the film below, with that film showing through the sprocket holes), into one opaque picture; the slices are cut from that picture and the
-  highlight and shadow are laid on the slices. So nothing underneath can show through the shading, and a slice that comes down to the ground already looks exactly as flat
-  film does, with no change of look when the bend ends. Bare board is left out of the snapshot, so the board and its shadows still show through holes over it
-  (`snapshot` in `raster.js`; rebuilt whenever the strip or the film under it moves).
+- **Each slice of a bent strip blends with the film beneath it exactly as flat film does**, so one that comes down to the ground looks like flat film at once, and the film below
+  shows through slice by slice as the bend settles (there is no change of look when the bend ends). Over film the strip is multiplied or faded by density; elsewhere it is
+  opaque. On the page it is drawn into separate canvases (opaque, faded, multiplied) so the multiply happens against the film in the page. The **highlight, shade and
+  gloss are an overlay of their own** laid over all of that, following the strip's outline (the holes stay open): the shading belongs to the film's surface, so the film
+  beneath cannot show through it (`drawBentStrip`, `bentShade` in `raster.js`; `paintBend` in `lightbox.js`).
 - **A bent strip keeps its place in the stack and obeys the same overlap rules as a flat one**: over the strips below it, under the strips above
   it (its canvases sit in the film's stack at its own z), see-through by density or multiplied where it lies over another strip, opaque
   elsewhere (`drawBentStrip`, `bentScratch`; `lightbox.js` `paintBend`). Its shadow falls on the strips below it, not on those above.
 - **It looks lifted and glossy (view from above)**: a lifted part looks bigger (`PERSP`). Light is from the upper left: the side of the peak
   facing it is a little brighter, the side facing away is clearly darker, and a narrow specular sheen (the glint of a glossy surface) sits
   where the surface mirrors the light toward the eye. All three are smooth gradients along the strip, with no seams or lines.
-- **It casts a shadow** on whatever is below it, toward the lower right, further and softer the higher the film is: close and dark where it
+- **It casts a faint shadow** (light enough not to darken the film below much, and only under the wave itself) on whatever is below it, toward the lower right, further and softer the higher the film is: close and dark where it
   is low, far and very soft where it is high, with the sprocket holes showing as light gaps (`paintBendShadows`). It falls on neighbouring
   strips too, and never on the bent strip itself.
 - **The stored slack pushes the eyepiece**: it builds as the hand pushes; once its push beats the eyepiece's friction the eyepiece gives way
