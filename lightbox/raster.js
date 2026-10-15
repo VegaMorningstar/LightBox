@@ -507,9 +507,11 @@ function bentGeometry(scene, s) {
   const topX = s.left + s.w / 2 + s.ox, topY = s.top + s.oy, ce = Math.cos(s.rot), se = Math.sin(s.rot);
   const edge = scene.edge, edgeK = scene.bendEdge ?? 1;
   const oAt = (y) => {
-    if (!edge || edgeK <= 0) return 0;
-    const wx = topX - y * se, wy = topY + y * ce;                       // the point y along the strip, on the sheet
-    return Math.min(1, overRim(wx, wy, scene.W, scene.H, edge.m) * edgeK);
+    // TEST (commented out, not deleted): film over the panel's rim no longer curves away (smaller and darker). Put this back to restore it.
+    // if (!edge || edgeK <= 0) return 0;
+    // const wx = topX - y * se, wy = topY + y * ce;                       // the point y along the strip, on the sheet
+    // return Math.min(1, overRim(wx, wy, scene.W, scene.H, edge.m) * edgeK);
+    return 0;
   };
   const sl = [], dark = [], light = [], gloss = [];
   let yTop = Infinity, yBot = -Infinity;

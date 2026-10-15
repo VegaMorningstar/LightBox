@@ -560,9 +560,10 @@ export function createFilm(scene, cfg = { push: 1, flutter: 1, rub: 0.5, eyeLoad
       }
       // is this strip bent, or hanging over the rim of the panel? Then the page and the glasses draw it as thin slices (raster.js)
       let rim = false;
-      if (edge && (cfg.edge ?? 1) > 0) {
-        for (const [qx, qy] of stripQuad(s)) if (overRim(qx, qy, scene.W, scene.H, edge.m) > 0.01) { rim = true; break; }
-      }
+      // TEST (commented out, not deleted): film hanging over the panel's rim no longer goes to the bent-strip drawing. Put this back to restore it.
+      // if (edge && (cfg.edge ?? 1) > 0) {
+      //   for (const [qx, qy] of stripQuad(s)) if (overRim(qx, qy, scene.W, scene.H, edge.m) > 0.01) { rim = true; break; }
+      // }
       s.bent = bk.a > 0.8 || bk.d > 1 || rim;
     }
     scene.bendEdge = cfg.edge ?? 1;
