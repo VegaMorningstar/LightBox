@@ -258,15 +258,24 @@ export function createFilm(scene, cfg = { push: 1, flutter: 1, rub: 0.5, eyeLoad
 
   // ---------- applying to the page ----------
 
+  /* Which strips are drawn from canvases (raster.js drawBentStrip) instead of the page's own strip: the bent ones, and, while any strip is bent, every strip that lies
+     over another one. The browser draws the page's "multiply copy" of an overlapping strip wrongly (in a patch outside its clip) whenever a painted canvas sits in the same
+     stack, so an overlapping strip must not rely on it: it goes through the canvas path too, where the multiply is drawn by the canvas and not by the browser. */
+  function markDrawn() {
+    const any = scene.strips.some((s) => s.bent);
+    for (const s of scene.strips) s.drawn = !!(s.bent || (any && s.over.length > 0));
+  }
+
   function applyDom() {
+    markDrawn();
     for (const s of scene.strips) {
       // Writing a style makes the browser re-check the layout, so only what actually changed is written (most strips
       // sit still while the eyepiece or one other strip moves).
       // a bent strip, or one hanging over the rim, is drawn from a canvas instead (raster.js drawBentStrip), so the page one is hidden
-      if (!!s.bent !== !!s._bentShown) {
-        s._bentShown = !!s.bent;
-        s.el.style.visibility = s.bent ? "hidden" : "";
-        if (s.bent) { if (s.gel) s.gel.style.visibility = "hidden"; if (s.mel) s.mel.style.visibility = "hidden"; }
+      if (!!s.drawn !== !!s._bentShown) {
+        s._bentShown = !!s.drawn;
+        s.el.style.visibility = s.drawn ? "hidden" : "";
+        if (s.drawn) { if (s.gel) s.gel.style.visibility = "hidden"; if (s.mel) s.mel.style.visibility = "hidden"; }
         else s._clip = undefined;                         // the overlap twins re-check their visibility
       }
       const t = `translate(${s.ox.toFixed(2)}px, ${s.oy.toFixed(2)}px) rotate(${s.rot.toFixed(5)}rad)`;
@@ -302,8 +311,8 @@ export function createFilm(scene, cfg = { push: 1, flutter: 1, rub: 0.5, eyeLoad
           s._clip = key;
           s.el.style.clipPath = hole;
           // the twins fill the cut-away region: one see-through by density, one multiplied onto what is below
-          if (s.gel) { s.gel.style.clipPath = region; s.gel.style.visibility = s.bent ? "hidden" : "visible"; s.gel.style.opacity = String(1 - scene.stack); }
-          if (s.mel) { s.mel.style.clipPath = region; s.mel.style.visibility = s.bent ? "hidden" : "visible"; s.mel.style.opacity = String(scene.stack); }
+          if (s.gel) { s.gel.style.clipPath = region; s.gel.style.visibility = s.drawn ? "hidden" : "visible"; s.gel.style.opacity = String(1 - scene.stack); }
+          if (s.mel) { s.mel.style.clipPath = region; s.mel.style.visibility = s.drawn ? "hidden" : "visible"; s.mel.style.opacity = String(scene.stack); }
         }
       } else if (s._clip) {
         s._clip = "";
@@ -567,6 +576,7 @@ export function createFilm(scene, cfg = { push: 1, flutter: 1, rub: 0.5, eyeLoad
       s.bent = bk.a > 0.8 || bk.d > 1 || rim;
     }
     scene.bendEdge = cfg.edge ?? 1;
+    markDrawn();
     bendCrunch = crunch;
   }
 
@@ -681,7 +691,7 @@ export function createFilm(scene, cfg = { push: 1, flutter: 1, rub: 0.5, eyeLoad
         }
       }
       for (const s of scene.strips) {
-        if (Math.abs(s.vx) > 0 || Math.abs(s.vy) > 0 || Math.abs(s.vw) > 0 || s.bk.d > 0 || s.bk.a > 0 || s.bent !== !!s._bentShown) active = true;
+        if (Math.abs(s.vx) > 0 || Math.abs(s.vy) > 0 || Math.abs(s.vw) > 0 || s.bk.d > 0 || s.bk.a > 0 || !!s.drawn !== !!s._bentShown) active = true;
         for (const c of s.cells) if (Math.abs(c.ang) > 0.0002 || Math.abs(c.omega) > 0.00001 || c.jx || c.jy || c.jvx || c.jvy) active = true;
       }
       // sound: a strip moving on the board slides; one riding over another also crackles

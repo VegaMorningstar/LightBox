@@ -502,7 +502,8 @@ function flatTexture(scene, s, mode, kk, variant = "opaque") {
 function bentGeometry(scene, s) {
   const bk = s.bk;
   const SLICE = 0.5;                                                        // each slice is half a pixel of film: far finer than the eye can pick out
-  const N = Math.min(3600, Math.max(40, Math.ceil(s.h / SLICE)));
+  const flatStrip = bk.a <= 0 && bk.d <= 0;
+  const N = flatStrip ? 1 : Math.min(3600, Math.max(40, Math.ceil(s.h / SLICE)));     // (a strip drawn here only for its overlaps is flat: one slice)
   const mx = s.w * BENT_MARGIN_X, W = s.w + 2 * mx, H = s.h + 2 * BENT_MARGIN_Y;
   const topX = s.left + s.w / 2 + s.ox, topY = s.top + s.oy, ce = Math.cos(s.rot), se = Math.sin(s.rot);
   const edge = scene.edge, edgeK = scene.bendEdge ?? 1;
@@ -1010,7 +1011,7 @@ function drawScene(ctx, scene, { mode, view }) {
       if (Math.max(...xs) + slack < view.x0 || Math.min(...xs) - slack > view.x1 ||
           Math.max(...ys) + slack < view.y0 || Math.min(...ys) - slack > view.y1) continue;
     }
-    if (s.bent && s.bk) {                                    // lifted by a bend, or over the rim: thin slices, in its place in the stack, over its own shadow
+    if (s.drawn && s.bk) {                                   // lifted by a bend, or over the rim: thin slices, in its place in the stack, over its own shadow
       paintBendShadows(ctx, [s], scene.W, scene.H);
       drawBentStrip(ctx, scene, s, mode, scene.drawScale);
       continue;

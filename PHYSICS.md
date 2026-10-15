@@ -199,6 +199,9 @@ the rim picture → buttons → film → dust → light seep and lit holes → p
   opaque. On the page it is drawn into separate canvases (opaque, faded, multiplied) so the multiply happens against the film in the page. The **highlight, shade and
   gloss are an overlay of their own** laid over all of that, following the strip's outline (the holes stay open): the shading belongs to the film's surface, so the film
   beneath cannot show through it (`drawBentStrip`, `bentShade` in `raster.js`; `paintBend` in `lightbox.js`).
+- **While any strip is bent, every strip that lies over another is drawn from canvases too** (`markDrawn` in `film.js`, `s.drawn`), not only the bent one. The browser draws the page's multiply copy of an
+  overlapping strip wrongly (a patch outside its clip) whenever a painted canvas sits in the same stack, so an overlapping strip must not rely on it; through the canvas path the multiply is drawn by
+  the canvas. Such a strip is flat (one slice, no shading). When no strip is bent, everything is the page's own strips again.
 - **A bent strip keeps its place in the stack and obeys the same overlap rules as a flat one**: over the strips below it, under the strips above
   it (its canvases sit in the film's stack at its own z), see-through by density or multiplied where it lies over another strip, opaque
   elsewhere (`drawBentStrip`, `bentScratch`; `lightbox.js` `paintBend`). Its shadow falls on the strips below it, not on those above.

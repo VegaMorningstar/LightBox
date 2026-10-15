@@ -331,7 +331,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     const dpr = overlayDpr();
     for (const s of sc.strips) {
       let L = bentLayers.get(s);
-      if (!s.bent) {
+      if (!s.drawn) {
         if (L) { for (const cv of Object.values(L)) cv.remove(); bentLayers.delete(s); }
         continue;
       }
