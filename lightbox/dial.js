@@ -15,10 +15,10 @@ export const DETENTS = [1, 1.5, 2, 2.5];  // the numbered points on the scale, w
 
 const INK = "#ece4d0";           // paint colour, used as the fallback where filters are unavailable
 const PAINT = "#ebe3cb";         // aged cream enamel
-const LIGHT = 0.46;              // how far the engraved edges are offset by the light, in dial units
+const LIGHT = 0.4;               // how far the engraved edges are offset by the light, in dial units
 
 /* Engraved, then filled with paint, like the numbers on a vintage lens. The marks are cut into the black bezel,
- * and the enamel sits a little below the surface: the metal lip throws a soft shadow across the upper-left edge
+ * and the enamel sits a little below the surface: the metal lip throws a thin, crisp shadow across the upper-left edge
  * of each mark, a thin highlight catches the metal on its lower-right edge, the groove shows as a fine dark line
  * around the paint, and the paint itself is slightly uneven, with tiny pits and a hand-filled edge.
  *
@@ -36,9 +36,9 @@ function buildEngraving(svg) {
   step("feDisplacementMap", { in: "SourceGraphic", in2: "edgeNoise", scale: 0.09, xChannelSelector: "R", yChannelSelector: "G", result: "shape" });
   step("feColorMatrix", { in: "shape", type: "matrix", values: "0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0", result: "A" });
   // the groove: a fine dark line just outside the paint
-  step("feMorphology", { in: "A", operator: "dilate", radius: 0.27, result: "wide" });
+  step("feMorphology", { in: "A", operator: "dilate", radius: 0.22, result: "wide" });
   step("feComposite", { in: "wide", in2: "A", operator: "out", result: "grooveBand" });
-  step("feFlood", { "flood-color": "#000", "flood-opacity": 0.9 });
+  step("feFlood", { "flood-color": "#000", "flood-opacity": 0.75 });
   step("feComposite", { in2: "grooveBand", operator: "in", result: "groove" });
   // the enamel, with a slight tonal variation
   step("feFlood", { "flood-color": PAINT });
@@ -49,14 +49,14 @@ function buildEngraving(svg) {
   // the metal lip's shadow across the upper-left of each mark, and the catch-light on its lower-right edge
   const off = step("feOffset", { in: "A", dx: LIGHT, dy: LIGHT, result: "shifted" });
   step("feComposite", { in: "A", in2: "shifted", operator: "out", result: "shadowBand" });
-  step("feGaussianBlur", { in: "shadowBand", stdDeviation: 0.09, result: "shadowSoft" });
-  step("feFlood", { "flood-color": "#2a2112", "flood-opacity": 0.72 });
+  step("feGaussianBlur", { in: "shadowBand", stdDeviation: 0.02, result: "shadowSoft" });
+  step("feFlood", { "flood-color": "#2a2112", "flood-opacity": 0.55 });
   step("feComposite", { in2: "shadowSoft", operator: "in", result: "shadow" });
   step("feComposite", { in: "shadowSoft", in2: "A", operator: "in", result: "shadowClip" });
-  step("feFlood", { "flood-color": "#2a2112", "flood-opacity": 0.7 });
+  step("feFlood", { "flood-color": "#2a2112", "flood-opacity": 0.18 });
   step("feComposite", { in2: "shadowClip", operator: "in", result: "shadowInPaint" });
   step("feComposite", { in: "shifted", in2: "A", operator: "out", result: "lipBand" });
-  step("feFlood", { "flood-color": "#fff6e2", "flood-opacity": 0.5 });
+  step("feFlood", { "flood-color": "#fff6e2", "flood-opacity": 0.45 });
   step("feComposite", { in2: "lipBand", operator: "in", result: "lip" });
   const merge = step("feMerge", {});
   ["groove", "paint", "pits", "shadowInPaint", "lip"].forEach((n) => el("feMergeNode", { in: n }, merge));
