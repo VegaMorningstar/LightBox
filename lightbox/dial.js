@@ -33,10 +33,10 @@ function buildEngraving(svg) {
   const step = (name, attrs) => el(name, attrs, f);
   // a rough, hand-filled edge on the paint
   step("feTurbulence", { type: "fractalNoise", baseFrequency: 0.85, numOctaves: 2, seed: 3, result: "edgeNoise" });
-  step("feDisplacementMap", { in: "SourceGraphic", in2: "edgeNoise", scale: 0.26, xChannelSelector: "R", yChannelSelector: "G", result: "shape" });
+  step("feDisplacementMap", { in: "SourceGraphic", in2: "edgeNoise", scale: 0.09, xChannelSelector: "R", yChannelSelector: "G", result: "shape" });
   step("feColorMatrix", { in: "shape", type: "matrix", values: "0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0", result: "A" });
   // the groove: a fine dark line just outside the paint
-  step("feMorphology", { in: "A", operator: "dilate", radius: 0.34, result: "wide" });
+  step("feMorphology", { in: "A", operator: "dilate", radius: 0.27, result: "wide" });
   step("feComposite", { in: "wide", in2: "A", operator: "out", result: "grooveBand" });
   step("feFlood", { "flood-color": "#000", "flood-opacity": 0.9 });
   step("feComposite", { in2: "grooveBand", operator: "in", result: "groove" });
@@ -44,12 +44,12 @@ function buildEngraving(svg) {
   step("feFlood", { "flood-color": PAINT });
   step("feComposite", { in2: "A", operator: "in", result: "paint" });
   step("feTurbulence", { type: "fractalNoise", baseFrequency: 1.3, numOctaves: 2, seed: 11, result: "grain" });
-  step("feColorMatrix", { in: "grain", type: "matrix", values: "0 0 0 0 0.3  0 0 0 0 0.22  0 0 0 0 0.12  8 0 0 0 -5.3", result: "pitsRaw" });
+  step("feColorMatrix", { in: "grain", type: "matrix", values: "0 0 0 0 0.3  0 0 0 0 0.22  0 0 0 0 0.12  8 0 0 0 -5.9", result: "pitsRaw" });
   step("feComposite", { in: "pitsRaw", in2: "A", operator: "in", result: "pits" });
   // the metal lip's shadow across the upper-left of each mark, and the catch-light on its lower-right edge
   const off = step("feOffset", { in: "A", dx: LIGHT, dy: LIGHT, result: "shifted" });
   step("feComposite", { in: "A", in2: "shifted", operator: "out", result: "shadowBand" });
-  step("feGaussianBlur", { in: "shadowBand", stdDeviation: 0.16, result: "shadowSoft" });
+  step("feGaussianBlur", { in: "shadowBand", stdDeviation: 0.09, result: "shadowSoft" });
   step("feFlood", { "flood-color": "#2a2112", "flood-opacity": 0.72 });
   step("feComposite", { in2: "shadowSoft", operator: "in", result: "shadow" });
   step("feComposite", { in: "shadowSoft", in2: "A", operator: "in", result: "shadowClip" });
@@ -111,13 +111,13 @@ export function buildDial() {
     const g = el("g", { transform: `rotate(${phi})` }, painted);
     el("line", {
       x1: 0, y1: -91.6, x2: 0, y2: major ? -83.4 : -87.6,
-      stroke: INK, "stroke-width": major ? 1.3 : 0.75, "stroke-linecap": "butt",
+      stroke: INK, "stroke-width": major ? 1.4 : 0.85, "stroke-linecap": "butt",
     }, g);
     if (i % 10 === 0) {
       const t = el("text", {
         transform: `rotate(${phi}) translate(0,-76.6)`,
         "text-anchor": "middle", "dominant-baseline": "central",
-        fill: INK, "font-size": 9, "font-weight": 600,
+        fill: INK, "font-size": 9.6, "font-weight": 700,
         "font-family": '"DIN Condensed","Avenir Next Condensed","Futura","Arial Narrow",sans-serif',
         "letter-spacing": 0.3,
       }, painted);
@@ -136,7 +136,7 @@ export function buildDial() {
     const t = el("text", {
       transform: `rotate(${phi}) translate(0,-${markR})`,
       "text-anchor": "middle", "dominant-baseline": "central",
-      fill: INK, "font-size": 7.8, "font-weight": 600,
+      fill: INK, "font-size": 8.3, "font-weight": 700,
       "font-family": '"DIN Condensed","Avenir Next Condensed","Futura","Arial Narrow",sans-serif',
     }, painted);
     t.textContent = ch;
