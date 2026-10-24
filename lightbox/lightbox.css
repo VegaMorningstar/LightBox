@@ -295,6 +295,7 @@
 }
 /* the buttons lie on the panel itself: under the film, the dust and the glass */
 .lb-stage > .sb-corner { z-index: -1; }
+.lb-sign { position: absolute; pointer-events: none; z-index: -1; display: none; }   /* etched into the panel, under the film */
 /* the sliders panel's holder: it only anchors the panel, which floats */
 .lb-nav { position: absolute; top: 0; right: 0; width: 0; height: 0; z-index: 5; font: 500 11px/1 ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: .2em; text-transform: uppercase; color: #5f5036; }
 

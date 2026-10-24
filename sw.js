@@ -16,7 +16,7 @@ const MAX_PHOTOS = 160;            // thumbnails and mid-size frames kept at mos
 const SHELL = [
   "./", "index.html", "photos.json", "manifest.webmanifest",
   "lightbox/lightbox.css", "lightbox/lightbox.js", "lightbox/dial.js", "lightbox/dust.js", "lightbox/film.js",
-  "lightbox/glass.js", "lightbox/raster.js", "lightbox/bleed.js", "lightbox/socket-buttons/buttons.js", "lightbox/socket-buttons/buttons.css", "lightbox/socket-buttons/knob.js", "lightbox/socket-buttons/knob.css", "lightbox/sounds.js",
+  "lightbox/glass.js", "lightbox/raster.js", "lightbox/bleed.js", "lightbox/socket-buttons/buttons.js", "lightbox/socket-buttons/buttons.css", "lightbox/socket-buttons/knob.js", "lightbox/socket-buttons/knob.css", "lightbox/etched-text/etched.js", "lightbox/etched-text/Pacifico-latin.woff2", "lightbox/sounds.js",
   "icons/icon-192.png", "icons/icon-512.png", "icons/icon.svg",
   "audio/glass-lift.wav", "audio/glass-place.wav",
 ];

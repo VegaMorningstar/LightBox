@@ -213,13 +213,13 @@ export function paintOverlay(ctx, W, H, { fall, grain }) {
  * edge turns over, then the dark room. m: the dark margin, f: how far the light falls off inside the rim, blur: how frosted the fall
  * is, all in css px. */
 /* the area of a button or knob and its markings, as a circle, for keeping dust off it (dust lies on the board, not on the fittings) */
-export function buttonClear(b) { return { x: b.x, y: b.y, r: b.icon === "knob" ? b.size * 1.08 : b.size / 2 + 6 }; }
+export function buttonClear(b) { return b.icon === "sign" ? { x: b.x, y: b.y, w: b.w + 8, h: b.h + 8 } : { x: b.x, y: b.y, r: b.icon === "knob" ? b.size * 1.08 : b.size / 2 + 6 }; }
 export function clipOutButtons(ctx, buttons) {
   if (!buttons?.length) return false;
   ctx.save();
   ctx.beginPath();
   ctx.rect(-1e5, -1e5, 2e5, 2e5);
-  for (const b of buttons) { const c = buttonClear(b); ctx.moveTo(c.x + c.r, c.y); ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2); }
+  for (const b of buttons) { const c = buttonClear(b); if (c.w) ctx.rect(c.x - c.w / 2, c.y - c.h / 2, c.w, c.h); else { ctx.moveTo(c.x + c.r, c.y); ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2); } }
   ctx.clip("evenodd");
   return true;
 }
@@ -771,7 +771,10 @@ function createWindowView(scene, dpr, { mode, bg }) {
       // the surface of the light box: its dark room, the fall of its light and the rim's highlight. The film, the buttons and the dust
       // lie on it, so they are drawn over it, and the panel's grain and falloff go over everything, as on the page.
       if (scene.edgeCanvas) ctx.drawImage(scene.edgeCanvas, 0, 0, scene.edgeCanvas.width, scene.edgeCanvas.height, 0, 0, scene.W, scene.H);
-      for (const btn of scene.buttons ?? []) (btn.icon === "knob" ? paintSocketKnob : paintSocketButton)(ctx, btn);      // the push buttons lie on the panel, under the film
+      for (const btn of scene.buttons ?? []) {
+        if (btn.icon === "sign") ctx.drawImage(btn.canvas, btn.x - btn.w / 2, btn.y - btn.h / 2, btn.w, btn.h);      // the etched lettering
+        else (btn.icon === "knob" ? paintSocketKnob : paintSocketButton)(ctx, btn);
+      }      // the push buttons lie on the panel, under the film
       drawScene(ctx, scene, { mode, view: { x0: cx - half, y0: cy - half, x1: cx + half, y1: cy + half } });
       const clipped = clipOutButtons(ctx, scene.buttons);                    // (no dust on the buttons, the knob or its markings)
       scene.specks?.draw(ctx, { x0: cx - half, y0: cy - half, x1: cx + half, y1: cy + half }, scene.frames);   // dust lying on the panel

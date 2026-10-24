@@ -14,6 +14,7 @@ import { createGlass, createLens } from "./glass.js";
 import { createBleed, paintHoles } from "./bleed.js";
 import { createSocketButton, mountSocketCorner, setCovered, setPressed, ICONS } from "./socket-buttons/buttons.js";
 import { createSocketKnob } from "./socket-buttons/knob.js";
+import { createEtchedText } from "./etched-text/etched.js";
 import { createSpecks } from "./dust.js";
 import { createFilm } from "./film.js";
 import { bakeEdge, buildFilmFilter, createLensView, createNegView, paintGlowLayer, clipOutButtons, frameQuads, holeSpots, paintOverlay, parseColor, readScene, stripQuad, warmNegatives } from "./raster.js";
@@ -203,7 +204,7 @@ function buildControls(rows, { onOrganize, onButton, sliders = true, volume = nu
   return { wrap: nav, corner: [...(sliders ? [toggle] : []), organize], left: knob ? [knob.el] : [], setters };
 }
 
-export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFade = 0.85, volumes = {}, outerGlass = {}, filmDrag = 1, filmFlutter = 1, stacking = 1, panelFalloff = 1.25, panelGlow = 1, panelGrain = 1, lightBleed = 1, lightSeep = 1.6, seepSpread = 10, size, controls = true, sliders = true } = {}) {
+export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFade = 0.85, volumes = {}, outerGlass = {}, filmDrag = 1, filmFlutter = 1, stacking = 1, panelFalloff = 1.25, panelGlow = 1, panelGrain = 1, lightBleed = 1, lightSeep = 1.6, seepSpread = 10, signText = "dude with a pentax", size, controls = true, sliders = true } = {}) {
   root.classList.add("lb-root");
   const stage = div("lb-stage");
   root.replaceChildren(stage);
@@ -232,6 +233,12 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
   let seep = lightSeep, spread = seepSpread;
   let specks = null;
   let edgeSize = { m: 14, f: 40 };          // the dark margin and the light's falloff inside the panel's rim (see the stylesheet)
+  // The sign: lettering etched into the panel between the volume knob and the buttons (etched-text/). It lies on the surface, under the film,
+  // and the glasses draw it too (see updateCovered, which hands them its box).
+  const sign = signText ? createEtchedText({ text: signText }) : null;
+  const signEl = document.createElement("canvas");
+  signEl.className = "lb-sign";
+  let signBox = null;                         // {x, y, w, h}: its centre and size, in stage (sheet) px; null when there is no room for it
   let cornerEls = [], cornerButtons = [];   // the push buttons, which lie on the panel under the film
   let grain = panelGrain;
   let falloff = panelFalloff;
@@ -323,6 +330,30 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
 
   // The buttons lie on the panel, so film can slide over them; a button with film over any part of it cannot be pressed (a
   // press there takes hold of the film instead).
+  /* set the sign between the knob and the nearest button, centred on the knob's height; hide it when the gap is too narrow for it */
+  function placeSign() {
+    signBox = null;
+    signEl.style.display = "none";
+    if (!sign || !cornerButtons.length) return;
+    const origin = stage.getBoundingClientRect();
+    const knob = cornerButtons.find((b) => b.dataset.icon === "knob");
+    const rights = cornerButtons.filter((b) => b.dataset.icon !== "knob");
+    if (!knob || !rights.length) return;
+    const k = knob.getBoundingClientRect();
+    const left = k.right - origin.left + 34, right = Math.min(...rights.map((b) => b.getBoundingClientRect().left)) - origin.left - 22;
+    const gap = right - left;
+    const ASPECT = 4.7;                                                    // the lettering's width over its height
+    if (gap < 150) return;
+    const h = Math.min(62, gap / ASPECT);
+    const r = sign.render(h, overlayDpr());
+    signEl.width = sign.canvas.width; signEl.height = sign.canvas.height;
+    signEl.getContext("2d").drawImage(sign.canvas, 0, 0);
+    const cx = (left + right) / 2, cy = k.top - origin.top + k.height / 2;
+    Object.assign(signEl.style, { display: "block", left: `${cx - r.width / 2}px`, top: `${cy - r.height / 2}px`, width: `${r.width}px`, height: `${r.height}px` });
+    signBox = { x: cx, y: cy, w: r.width, h: r.height };
+  }
+  sign?.ready.then(() => { if (cornerButtons.length) { placeSign(); if (sceneRef) render(); } });
+
   function updateCovered() {
     if (!cornerButtons.length) return;
     const origin = stage.getBoundingClientRect();
@@ -339,6 +370,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
       setCovered(b, covered);
       shown.push({ x: cx, y: cy, size: r.width, icon: b.dataset.icon, angle: +(b.dataset.angle ?? 0) });
     }
+    if (signBox) shown.push({ x: signBox.x, y: signBox.y, size: signBox.h, icon: "sign", w: signBox.w, h: signBox.h, canvas: signEl });
     sceneRef.buttons = shown;       // the glasses draw them too, under the film
   }
 
@@ -366,7 +398,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
   }
 
   const render = () => {
-    if (sceneRef) { paintSeep(); paintDust(); updateCovered(); }
+    if (sceneRef) { paintSeep(); updateCovered(); paintDust(); }
     const L = smooth(lift) * liftHeight;
     loupe.el.style.transform = `translate(${cur.x - Do / 2}px, ${cur.y - Do / 2}px) scale(${(1 + LIFT_SCALE * L).toFixed(4)})`;
     loupe.el.style.setProperty("--lift", L.toFixed(3));
@@ -569,9 +601,10 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
       buildSheet(photos, fw, "lb-neg"),
       ...(glass && lens ? [buildSheet(photos, fw, "lb-ghost"), buildSheet(photos, fw, "lb-mult")] : []),
     );
-    stage.replaceChildren(...cornerEls, edgeEl, filmLayer, seepEl, holesEl, overlayEl, dustEl, glowEl, loupe.el);
+    stage.replaceChildren(...cornerEls, edgeEl, signEl, filmLayer, seepEl, holesEl, overlayEl, dustEl, glowEl, loupe.el);
     holesKey = "";
     dustKey = "";
+    placeSign();
     {   // the rim is baked at the sheet's real size, which is known now the film is in
       const baked = bakeEdge(stage.clientWidth, stage.offsetHeight, edgeSize.m, edgeSize.f, edgeSize.blur);
       baked.className = "lb-edge";
@@ -718,6 +751,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     cornerEls = [mountSocketCorner(stage, c.corner), ...(c.left.length ? [mountSocketCorner(stage, c.left, { side: "left" })] : [])];
     stage.prepend(...cornerEls);         // the buttons lie on the panel, under the film
     cornerButtons = [...c.corner, ...c.left];
+    placeSign();
   }
 
   // drag
