@@ -220,7 +220,7 @@ function buildControls(rows, { onOrganize, onButton, sliders = true, volume = nu
   return { wrap: nav, corner: [...(sliders ? [toggle] : []), organize], left: knob ? [knob.el] : [], setters };
 }
 
-export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFade = 0.85, volumes = {}, outerGlass = {}, filmDrag = 1, filmFlutter = 1, stacking = 1, panelFalloff = 1.25, panelGlow = 1, panelGrain = 1, lightBleed = 1, lightSeep = 1.6, seepSpread = 10, signText = "dude with a pentax", size, controls = true, sliders = true } = {}) {
+export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFade = 0.85, volumes = {}, outerGlass = {}, filmDrag = 1, filmFlutter = 1, stacking = 1, panelFalloff = 1.25, panelGlow = 1, panelGrain = 1, lightBleed = 1, lightSeep = 1.6, seepSpread = 10, signText = "dude with a pentax", showSign = false, size, controls = true, sliders = true } = {}) {
   root.classList.add("lb-root");
   const stage = div("lb-stage");
   root.replaceChildren(stage);
@@ -252,7 +252,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
   // The sign: lettering etched into the panel between the volume knob and the buttons (etched-text/). It lies on the surface, under the film,
   // and the glasses draw it too (see updateCovered, which hands them its box).
   const SIGN_WORDS = "dude with a pentax";
-  let signOn = signText !== "";                                       // "Show text" in the sliders menu; the `signText` option "" starts it off
+  let signOn = showSign && signText !== "";                           // "Show text" in the sliders menu; it starts hidden unless `showSign` is set
   const sign = createEtchedText({ text: signText || SIGN_WORDS });
   const signEl = sign?.el ?? document.createElement("div");          // an SVG: vector, so it stays sharp at any zoom
   signEl.setAttribute("class", "lb-sign");
