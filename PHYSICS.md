@@ -215,7 +215,7 @@ the rim picture → buttons → film → dust → light seep and lit holes → p
   along the strip, the slack is used up and the peak falls back down. The heavier the eyepiece, the later it gives way and the taller the peak
   (`BK_K`, `BK_MU`, *Eyepiece weight*; *Bent film pushes eyepiece*, *Film bend height*). Released, the slack slides away.
 - **Sound: one "womp" per peak**, as loud as the peak is tall (`bendEvents`, `sounds.wop`): it sounds when the peak has risen to its top, and a
-  lighter one when it falls back after being let go. Never a repeating womp. It is round and low: it opens like an "o", closes like an "m" (the note sinks and the sound is shut in) and ends in a soft "p". Volume 0.4. The film crackle from the bend itself plays at only 0.15 of its level.
+  lighter one when it falls back after being let go. Never a repeating womp. It is round and low: it opens like an "o", closes like an "m" (the note sinks and the sound is shut in) and ends in a soft "p". Volume 0 (muted for now; the slider stays). The film crackle from the bend itself plays at only 0.15 of its level.
 - **Film hanging over the rim of the panel curving away is switched off for now** (commented out in `film.js` `updateBend` and `raster.js` `bentGeometry`, marked TEST). It made a strip at the rim
   draw on the bent-strip path even when flat, which broke the overlap with another strip (a lighter band). Film over the rim just overhangs, flat. To bring it back, restore the curve-away
   without sending flat strips to the bent drawing. (The *Film curves over the rim* slider and figure 11 of the diagram page describe the switched-off behaviour.)

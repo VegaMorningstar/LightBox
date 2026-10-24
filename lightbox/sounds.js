@@ -23,7 +23,7 @@ export const GLASS_DRAG_ENABLED = false;
 const grainWindow = Float32Array.from({ length: 48 }, (_, i) => 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / 47) );
 
 /* The level of every sound, 0 to 1 (the page has a slider for each). A sound's own level sits under the master. */
-export const DEFAULT_VOLUMES = { master: 1, tick: 0.3, notch: 0.6, lift: 0.6, place: 0.15, thump: 0.6, button: 0.6, drag: 0.3, slide: 0.01, crackle: 0.6, wave: 0.4 };
+export const DEFAULT_VOLUMES = { master: 1, tick: 0.3, notch: 0.6, lift: 0.6, place: 0.15, thump: 0.6, button: 0.6, drag: 0.3, slide: 0.01, crackle: 0.6, wave: 0 };
 
 export function createSounds({ volumes = {} } = {}) {
   const vols = { ...DEFAULT_VOLUMES, ...volumes };
