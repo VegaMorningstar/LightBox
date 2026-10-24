@@ -16,5 +16,5 @@ sign.el.style.width = `${w}px`; sign.el.style.height = `${w / aspect}px`;
 sign.paint(ctx, x, y, w, h);                        // the same lettering on a canvas, for anything that redraws the surface (a magnifier)
 ```
 
-Self-contained: `etched.js` and the font (`Yellowtail-latin.woff2`, a slanted brush script, basic Latin only, Apache Licence 2.0, see `LICENSE-Yellowtail.txt`).
-Another font: `createEtchedText({ text, fontFamily: "MyFace", fontUrl: "./my-face.woff2" })`. A Marshall-style script, not Marshall's own logo face (a trademark).
+Self-contained: just `etched.js`. The font is italic Times New Roman, which is already on the machine, so there is no font file to ship.
+Another face: `createEtchedText({ text, fontFamily: "Georgia", style: "normal" })`, or a font file of your own: add `fontUrl: "./my-face.woff2"`.
