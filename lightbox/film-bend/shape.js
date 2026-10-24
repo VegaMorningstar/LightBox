@@ -4,7 +4,7 @@
  * it cannot use becomes slack, and the slack lifts into a single peak somewhere between the hand and the thing holding it. Film is stiff and thin, so the arch is one smooth bow, not a wobble, and the arc length is kept: where the film
  * lifts, it also draws in lengthwise.
  *
- * This file holds only the shape. film.js works out the slack and the pushing; raster.js draws the strip bent.
+ * This file holds only the shape (pure maths, no state). physics.js works out the slack and the pushing; draw.js draws the strip bent.
  *
  *   bk = { d: slack (px), a: arch height (px), sign: +1 when the hand is above the holder, hand: where the hand holds (px along the
  *          strip from its top), pin: where the holder's near edge is, L: the free length between them, m: 1 or 2 arches }

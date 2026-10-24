@@ -177,7 +177,7 @@ the rim picture → buttons → film → dust → light seep and lit holes → p
 - **Sounds**: the eyepiece being displaced makes the slide sound at a much lower speed than normal; a strip nudged along the board
   by the eyepiece or by a carried eyepiece makes the film slide sound, and the carried eyepiece rubbing film gives the crackle.
 
-### 4.9 Film is thin: it bends (`bend.js`, `film.js` `updateBend`, `raster.js` `drawBentStrip`, `paintBendShadows`)
+### 4.9 Film is thin: it bends (all of it in `lightbox/film-bend/`: `shape.js`, `physics.js`, `draw.js`, `layers.js`, `sound.js`; `film-bend/README.md` maps every file and every place outside it that touches the bend)
 - **Only a lengthwise push toward the eyepiece bends film.** A strip held at one point and pushed *along its length* toward the eyepiece resting
   on it cannot slide (the eyepiece holds that part), so it buckles: the length it cannot use becomes slack, and the slack lifts into a peak.
   A sideways push never bends it (only the lengthwise part of a motion counts). **Pulling the film away from the eyepiece never bends it**:
@@ -186,9 +186,9 @@ the rim picture → buttons → film → dust → light seep and lit holes → p
   hand and the eyepiece**, but it is shorter than that distance and sits wherever it likes within it (`placeBend`): the film either side lies
   flat. It does not have to start at the eyepiece or end at the hand.
 - **The peak is one smooth bump, flat at both ends**: the shape of a sheet buckled with both ends held flat (sin²). The film leaves the flat with no slope,
-  rises gradually and settles back the same way: no kink, no sudden drop (`arch` in `bend.js`).
+  rises gradually and settles back the same way: no kink, no sudden drop (`arch` in `film-bend/shape.js`).
 - **No bend when the wave is no longer than one picture**: a wave that short cannot buckle (a frame is stiff across its own length), so nothing is stored and the film just
-  pushes the eyepiece as before. Past one picture the bend eases in over the next third of a picture (`bk.can`, `grow` in `film.js` `updateBend`).
+  pushes the eyepiece as before. Past one picture the bend eases in over the next third of a picture (`bk.can`, `grow` in `film-bend/physics.js` `update`).
 - **No two bends are alike**: each strip has its own lean (where the peak sits), height, ripple, position and wavelength share, from its
   place in the sheet (`seedBend`). The film's arc length is kept: where it lifts it also draws in lengthwise (`arcTable`, `archHeight`).
 - **The bend is smooth and has nothing to do with the picture frames**: a bent strip is drawn as very thin slices (half a pixel of film
@@ -198,13 +198,13 @@ the rim picture → buttons → film → dust → light seep and lit holes → p
   shows through slice by slice as the bend settles (there is no change of look when the bend ends). Over film the strip is multiplied or faded by density; elsewhere it is
   opaque. On the page it is drawn into separate canvases (opaque, faded, multiplied) so the multiply happens against the film in the page. The **highlight, shade and
   gloss are an overlay of their own** laid over all of that, following the strip's outline (the holes stay open): the shading belongs to the film's surface, so the film
-  beneath cannot show through it (`drawBentStrip`, `bentShade` in `raster.js`; `paintBend` in `lightbox.js`).
+  beneath cannot show through it (`drawBentStrip`, `bentShade` in `film-bend/draw.js`; `paint` in `film-bend/layers.js`).
 - **While any strip is bent, every strip that lies over another is drawn from canvases too** (`markDrawn` in `film.js`, `s.drawn`), not only the bent one. The browser draws the page's multiply copy of an
   overlapping strip wrongly (a patch outside its clip) whenever a painted canvas sits in the same stack, so an overlapping strip must not rely on it; through the canvas path the multiply is drawn by
   the canvas. Such a strip is flat (one slice, no shading). When no strip is bent, everything is the page's own strips again.
 - **A bent strip keeps its place in the stack and obeys the same overlap rules as a flat one**: over the strips below it, under the strips above
   it (its canvases sit in the film's stack at its own z), see-through by density or multiplied where it lies over another strip, opaque
-  elsewhere (`drawBentStrip`, `bentScratch`; `lightbox.js` `paintBend`). Its shadow falls on the strips below it, not on those above.
+  elsewhere (`drawBentStrip`, `scratchCanvas` in `film-bend/draw.js`; `paint` in `film-bend/layers.js`). Its shadow falls on the strips below it, not on those above.
 - **It looks lifted and glossy (view from above)**: a lifted part looks bigger (`PERSP`). Light is from the upper left: the side of the peak
   facing it is a little brighter, the side facing away is clearly darker, and a narrow specular sheen (the glint of a glossy surface) sits
   where the surface mirrors the light toward the eye. All three are smooth gradients along the strip, with no seams or lines.
@@ -216,11 +216,11 @@ the rim picture → buttons → film → dust → light seep and lit holes → p
   (`BK_K`, `BK_MU`, *Eyepiece weight*; *Bent film pushes eyepiece*, *Film bend height*). Released, the slack slides away.
 - **Sound: one "womp" per peak**, as loud as the peak is tall (`bendEvents`, `sounds.wop`): it sounds when the peak has risen to its top, and a
   lighter one when it falls back after being let go. Never a repeating womp. It is round and low: it opens like an "o", closes like an "m" (the note sinks and the sound is shut in) and ends in a soft "p". Volume 0 (muted for now; the slider stays). The film crackle from the bend itself plays at only 0.15 of its level.
-- **Film hanging over the rim of the panel curving away is switched off for now** (commented out in `film.js` `updateBend` and `raster.js` `bentGeometry`, marked TEST). It made a strip at the rim
+- **Film hanging over the rim of the panel curving away is switched off for now** (commented out in `film-bend/physics.js` `update` and `film-bend/draw.js` `bentGeometry`, marked TEST). It made a strip at the rim
   draw on the bent-strip path even when flat, which broke the overlap with another strip (a lighter band). Film over the rim just overhangs, flat. To bring it back, restore the curve-away
   without sending flat strips to the bent drawing. (The *Film curves over the rim* slider and figure 11 of the diagram page describe the switched-off behaviour.)
 
-- **A page of diagrams explains all of this** (`how-film-bends.html`, opened by the wave-shaped button beside the sliders button, so it shows wherever the sliders do). Its figures are drawn from `bend.js` itself (the shape, the numbers in `BK`, `lighting`), so it cannot drift from what the page does.
+- **A page of diagrams explains all of this** (`how-film-bends.html`, opened by the wave-shaped button beside the sliders button, so it shows wherever the sliders do). Its figures are drawn from `film-bend/shape.js` itself (the shape, the numbers in `BK`, `lighting`), so it cannot drift from what the page does.
 
 ## 5. Buttons set into the surface (`socket-buttons/`)
 

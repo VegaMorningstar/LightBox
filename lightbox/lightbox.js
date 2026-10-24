@@ -17,7 +17,8 @@ import { createSocketKnob } from "./socket-buttons/knob.js";
 import { createEtchedText } from "./etched-text/etched.js";
 import { createSpecks } from "./dust.js";
 import { createFilm } from "./film.js";
-import { bakeEdge, buildFilmFilter, createLensView, createNegView, paintGlowLayer, bentBounds, clipOutButtons, drawBentStrip, frameQuads, holeSpots, liftedPatches, paintBendShadows, paintOverlay, parseColor, readScene, stripQuad, warmNegatives } from "./raster.js";
+import { bakeEdge, buildFilmFilter, createLensView, createNegView, paintGlowLayer, clipOutButtons, frameQuads, holeSpots, paintOverlay, parseColor, readScene, stripQuad, warmNegatives } from "./raster.js";
+import { createBendLayers, liftedPatches } from "./film-bend/index.js";
 
 const STRIP_DY = [0, 0.34, 0.12, 0.5, 0.05, 0.27];   // per-strip stagger, in frame widths
 const STRIP_ROT = [-0.3, 0.25, -0.15, 0.35, -0.25, 0.15]; // per-strip tilt, degrees
@@ -242,7 +243,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
   seepEl.className = "lb-seep";
   let edgeEl = document.createElement("canvas");         // the dark room around the lit panel, the fall of its light and the rim's highlight (bakeEdge)
   edgeEl.className = "lb-edge";
-  const bentLayers = new Map();                        // for each bent strip: its shadow and its slices, each a canvas set into the stack at the strip's own place
+  const bendLayers = createBendLayers();               // the canvases bent strips are drawn into, set into the film's stack (film-bend/layers.js)
   const dustEl = document.createElement("canvas");    // dust on the board and film borders (kept off the photographs)
   dustEl.className = "lb-dust";
   let dustKey = "";
@@ -350,45 +351,6 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     paintHoles(c, holes, quads, spread, seep, null, sc.holeExclude);
   }
 
-  // Film lifted by bending casts a shadow on the surface (see raster.js paintBendShadows)
-  function paintBend() {
-    const sc = sceneRef;
-    const dpr = overlayDpr();
-    for (const s of sc.strips) {
-      let L = bentLayers.get(s);
-      if (!s.drawn) {
-        if (L) { for (const cv of Object.values(L)) cv.remove(); bentLayers.delete(s); }
-        continue;
-      }
-      // Each bent strip is drawn into canvases that sit in the film's stack right after the strip's own (hidden) element and carry its
-      // stacking, so it keeps its place: over the strips below it, under the strips above it.
-      if (!L) {
-        L = { shadow: document.createElement("canvas"), film: document.createElement("canvas"), alpha: document.createElement("canvas"), mult: document.createElement("canvas"), shade: document.createElement("canvas") };
-        for (const cv of Object.values(L)) cv.className = "lb-bend";
-        s.el.after(L.shadow, L.film, L.alpha, L.mult, L.shade);
-        bentLayers.set(s, L);
-      }
-      const bb = bentBounds(s);
-      const z = s.z ? String(s.z) : "";
-      for (const cv of Object.values(L)) {
-        const w = Math.round(bb.w * dpr), h = Math.round(bb.h * dpr);
-        if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
-        Object.assign(cv.style, { left: `${bb.x}px`, top: `${bb.y}px`, width: `${bb.w}px`, height: `${bb.h}px`, zIndex: z });
-        const c = cv.getContext("2d");
-        c.setTransform(1, 0, 0, 1, 0, 0);
-        c.clearRect(0, 0, cv.width, cv.height);
-        c.setTransform(dpr, 0, 0, dpr, -bb.x * dpr, -bb.y * dpr);
-      }
-      // where this strip lies over another, the page blends it as it blends a flat one: faded by density, and/or multiplied onto the film below
-      L.alpha.style.opacity = String(1 - sc.stack);
-      L.mult.style.opacity = String(sc.stack);
-      L.mult.style.mixBlendMode = "multiply";
-      const sh = L.shadow.getContext("2d");
-      paintBendShadows(sh, [s], bb.w, bb.h, bb.x, bb.y);
-      drawBentStrip(null, sc, s, "neg", dpr, { opaque: L.film.getContext("2d"), alpha: L.alpha.getContext("2d"), mult: L.mult.getContext("2d"), shade: L.shade.getContext("2d") });
-    }
-  }
-
   // The buttons lie on the panel, so film can slide over them; a button with film over any part of it cannot be pressed (a
   // press there takes hold of the film instead).
   /* set the sign between the knob and the nearest button, centred on the knob's height; hide it when the gap is too narrow for it */
@@ -463,7 +425,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
   }
 
   const render = () => {
-    if (sceneRef) { paintSeep(); updateCovered(); paintDust(); paintBend(); }
+    if (sceneRef) { paintSeep(); updateCovered(); paintDust(); bendLayers.paint(sceneRef, overlayDpr()); }
     const L = smooth(lift) * liftHeight;
     loupe.el.style.transform = `translate(${cur.x - Do / 2}px, ${cur.y - Do / 2}px) scale(${(1 + LIFT_SCALE * L).toFixed(4)})`;
     loupe.el.style.setProperty("--lift", L.toFixed(3));
@@ -591,7 +553,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     // that fades back in as it touches down, so a throw that lands still rubs the film as it glides.
     const touch = 1 - smooth(lift);
     const filmMoving = film ? film.step(dt, { x: cur.x, y: cur.y, vx: eyeV.x * touch, vy: eyeV.y * touch, radius: Do / 2, carried: performance.now() - carriedAt < 500, down: touch, mass: eyeMass }) : false;
-    // Film that has buckled against the eyepiece pushes it once the push beats its friction (see film.js updateBend)
+    // Film that has buckled against the eyepiece pushes it once the push beats its friction (see film-bend/physics.js)
     if (film && !dragging && lift < 0.5) {
       const ep = film.eyePush;
       if (ep.x || ep.y) { vel.x += ep.x * dt; vel.y += ep.y * dt; coasting = true; carriedAt = performance.now(); }
@@ -672,7 +634,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
       buildSheet(photos, fw, "lb-neg"),
       ...(glass && lens ? [buildSheet(photos, fw, "lb-ghost"), buildSheet(photos, fw, "lb-mult")] : []),
     );
-    bentLayers.clear();                                  // (the old strips' canvases went with the old layout)
+    bendLayers.clear();                                  // (the old strips' canvases went with the old layout)
     stage.replaceChildren(...cornerEls, edgeEl, signEl, filmLayer, seepEl, holesEl, overlayEl, dustEl, glowEl, loupe.el);
     holesKey = "";
     dustKey = "";

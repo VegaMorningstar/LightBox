@@ -1,0 +1,2 @@
+/* The canvases a bent strip is drawn into (see layers.js): set into the film's stack at the strip's own place, over the page's own (hidden) strip. */
+.lb-bend { position: absolute; pointer-events: none; }

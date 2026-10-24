@@ -98,7 +98,6 @@
    the rim, and a thin highlight marks where the edge curves away (see the photograph of a real one). It is one picture, baked by
    bakeEdge in raster.js, which the glasses draw too. */
 .lb-edge { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: -1; }   /* part of the surface: under the film */
-.lb-bend { position: absolute; pointer-events: none; }   /* set into the film's stack at a bent strip's place (see lightbox.js paintBend) */
 .lb-dust { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; mix-blend-mode: multiply; }
 .lb-glow { mix-blend-mode: color-dodge; }
 .lb-cell:first-child {                    /* leader before the first frame */
