@@ -8,7 +8,7 @@ given and never wraps.
 ```js
 import { createEtchedText } from "./etched-text/etched.js";
 
-const sign = createEtchedText({ text: "dude_with_a_pentax" });
+const sign = createEtchedText({ text: "dude with a pentax" });
 await sign.ready;                                   // the font has loaded
 parent.append(sign.el);                             // an <svg>; size it with CSS width/height, it keeps its shape
 const { aspect, midY } = sign.measure();            // width over height; and where the middle of the small letters sits, 0..1 of the height

@@ -204,7 +204,7 @@ function buildControls(rows, { onOrganize, onButton, sliders = true, volume = nu
   return { wrap: nav, corner: [...(sliders ? [toggle] : []), organize], left: knob ? [knob.el] : [], setters };
 }
 
-export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFade = 0.85, volumes = {}, outerGlass = {}, filmDrag = 1, filmFlutter = 1, stacking = 1, panelFalloff = 1.25, panelGlow = 1, panelGrain = 1, lightBleed = 1, lightSeep = 1.6, seepSpread = 10, signText = "dude_with_a_pentax", size, controls = true, sliders = true } = {}) {
+export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFade = 0.85, volumes = {}, outerGlass = {}, filmDrag = 1, filmFlutter = 1, stacking = 1, panelFalloff = 1.25, panelGlow = 1, panelGrain = 1, lightBleed = 1, lightSeep = 1.6, seepSpread = 10, signText = "dude with a pentax", size, controls = true, sliders = true } = {}) {
   root.classList.add("lb-root");
   const stage = div("lb-stage");
   root.replaceChildren(stage);
