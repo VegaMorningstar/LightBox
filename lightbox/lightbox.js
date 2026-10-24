@@ -176,7 +176,7 @@ function buildControls(rows, { onOrganize, onButton, sliders = true, volume = nu
 
   const setters = {};
   let lastGroup = null;
-  for (const { group, key, name, min, max, step, value, onInput } of rows) {
+  for (const { group, key, name, min, max, step, value, onInput, type = "range" } of rows) {
     if (sliders && group && group !== lastGroup) {
       const h = document.createElement("div");
       h.className = "lb-nav-group";
@@ -188,6 +188,22 @@ function buildControls(rows, { onOrganize, onButton, sliders = true, volume = nu
     const text = document.createElement("span");
     text.textContent = name;
     const input = document.createElement("input");
+    if (type === "check") {                                    // an on / off switch (the sign's "Show text")
+      Object.assign(input, { type: "checkbox", checked: !!value });
+      input.addEventListener("change", () => onInput(input.checked));
+      setters[key] = (v) => { input.checked = !!v; };
+      label.append(text, input);
+      if (sliders) panel.append(label);
+      continue;
+    }
+    if (type === "text") {                                     // a line of words (the sign's text)
+      Object.assign(input, { type: "text", value, maxLength: 60, spellcheck: false, autocomplete: "off" });
+      input.addEventListener("input", () => onInput(input.value));
+      setters[key] = (v) => { input.value = v; };
+      label.append(text, input);
+      if (sliders) panel.append(label);
+      continue;
+    }
     Object.assign(input, { type: "range", min, max, step, value });
     const out = document.createElement("output");
     const show = (v) => { out.textContent = Number(v).toFixed(2); };
@@ -235,7 +251,9 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
   let edgeSize = { m: 14, f: 40 };          // the dark margin and the light's falloff inside the panel's rim (see the stylesheet)
   // The sign: lettering etched into the panel between the volume knob and the buttons (etched-text/). It lies on the surface, under the film,
   // and the glasses draw it too (see updateCovered, which hands them its box).
-  const sign = signText ? createEtchedText({ text: signText }) : null;
+  const SIGN_WORDS = "dude with a pentax";
+  let signOn = signText !== "";                                       // "Show text" in the sliders menu; the `signText` option "" starts it off
+  const sign = createEtchedText({ text: signText || SIGN_WORDS });
   const signEl = sign?.el ?? document.createElement("div");          // an SVG: vector, so it stays sharp at any zoom
   signEl.setAttribute("class", "lb-sign");
   let signBox = null;                         // {x, y, w, h}: its centre and size, in stage (sheet) px; null when there is no room for it
@@ -334,7 +352,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
   function placeSign() {
     signBox = null;
     signEl.style.display = "none";
-    if (!sign || !cornerButtons.length) return;
+    if (!signOn || !sign.text.trim() || !cornerButtons.length) return;
     const origin = stage.getBoundingClientRect();
     const knob = cornerButtons.find((b) => b.dataset.icon === "knob");
     const rights = cornerButtons.filter((b) => b.dataset.icon !== "knob");
@@ -354,7 +372,9 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     Object.assign(signEl.style, { display: "block", left: `${cx - w / 2}px`, top: `${top}px`, width: `${w}px`, height: `${h}px` });
     signBox = { x: cx, y: top + h / 2, w, h };
   }
-  sign?.ready.then(() => { if (cornerButtons.length) { placeSign(); if (sceneRef) render(); } });
+  /* put the sign where it belongs after it was switched on or off or its words changed, and redraw what shows it (the glass views) */
+  function refreshSign() { placeSign(); if (sceneRef) { render(); kick?.(); } }
+  sign.ready.then(() => { if (cornerButtons.length) { placeSign(); if (sceneRef) render(); } });
 
   function updateCovered() {
     if (!cornerButtons.length) return;
@@ -737,6 +757,9 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
       { group: "Sound · sliding", key: "vol_slide", name: "Eyepiece slide", min: 0, max: 1, step: 0.01, value: vols.slide, onInput: (v) => sounds.setVolume("slide", v) },
       { group: "Sound · sliding", key: "vol_crackle", name: "Film crackle", min: 0, max: 1, step: 0.05, value: vols.crackle, onInput: (v) => sounds.setVolume("crackle", v) },
       { group: "Sound · interface", key: "vol_button", name: "Button click", min: 0, max: 1, step: 0.05, value: vols.button, onInput: (v) => sounds.setVolume("button", v) },
+      // the sign on the panel: switch it off, or change its words (an empty line hides it too)
+      { group: "Sign", key: "sign_on", type: "check", name: "Show text", value: signOn, onInput: (v) => { signOn = v; refreshSign(); } },
+      { group: "Sign", key: "sign_text", type: "text", name: "Words", value: sign.text, onInput: (v) => { sign.setText(v); refreshSign(); } },
     ], {
       onOrganize: () => { film?.reset(); kick(); },
       onButton: (phase) => { sounds.unlock(); sounds.button(phase); },

@@ -6,6 +6,7 @@
  *   await sign.ready;                                  // the font has loaded and the lettering is measured
  *   parent.append(sign.el);                            // an <svg>: size it with CSS width / height, it keeps its shape
  *   const { aspect, midY } = sign.measure();           // the box's width over height, and where the middle of the small letters sits (0..1 of the height)
+ *   sign.setText("new words");                         // change the words, then measure() again
  *   sign.paint(ctx, x, y, w, h);                       // the same lettering onto a canvas, for anything that redraws the surface itself (a magnifier)
  *
  * The engraving is the same as the scale marks round the volume knob: the letters are cut in dark brown, a dark band lies along the upper-left inside
@@ -26,7 +27,8 @@ const FS = 100;                                 // the type size in the drawing'
 const PAD = 8;                                  // room round the ink so the engraving's shading is not clipped
 
 /* `swap` (off by default) lets a few letters come from another installed face, per letter, in the same line: { chars: "e", fullName: ["Times New Roman Italic", "TimesNewRomanPS-ItalicMT"], style: "italic" } */
-export function createEtchedText({ text = "", fontFamily = "EtchedScript", fontUrl = FONT_URL, weight = "400", swap = null } = {}) {
+export function createEtchedText({ text: initialText = "", fontFamily = "EtchedScript", fontUrl = FONT_URL, weight = "400", swap = null } = {}) {
+  let text = initialText;
   let ready = Promise.resolve();
   const swapFamily = `${fontFamily}-swap`;
   if (typeof FontFace !== "undefined") {
@@ -106,5 +108,8 @@ export function createEtchedText({ text = "", fontFamily = "EtchedScript", fontU
     ctx.restore();
   }
 
-  return { el, ready, measure, paint };
+  /* change the words (the box is re-measured; ask measure() again afterwards) */
+  function setText(t) { text = String(t); node.textContent = text; layout(); }
+
+  return { el, ready, measure, paint, setText, get text() { return text; } };
 }

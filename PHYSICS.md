@@ -186,6 +186,8 @@ the rim picture → buttons → film → dust → light seep and lit holes → p
   the magnifier gets a canvas copy of it like the knob's. The four words are **one line that always stays together**: the whole lettering scales down to fit about 80% of the gap (it hides only if the gap is under about 60 px)
   and never wraps. It lies on the surface under the film, dust is kept off it, it is centred on the screen by its real ink extents (so its room is set by the nearer of the knob and the buttons), and the middle of its small letters is level with the middle of the knob
   (`placeSign` in `lightbox.js`; the words are the `signText` option).
+- **The sign can be switched off or reworded** from the sliders menu (group "Sign": "Show text", and "Words"). Off, or an empty line, hides it (`placeSign` returns early and the glass views stop drawing it);
+  typing re-measures it, so it is re-fitted and re-centred as you type. It starts on, with the `signText` option's words.
 - **The knob and the buttons are centred on one line**: every corner row is centred on `--sb-mid`, whatever size its buttons are, so the knob's centre and the buttons' centres are level
   (`buttons.css` `.sb-corner`).
 - **The volume knob** (`socket-buttons/knob.js`) sits in the top left corner of the panel and sets the page's overall (master) volume, 0 to 2×,

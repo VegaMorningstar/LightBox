@@ -337,6 +337,11 @@
 .lb-nav-panel label > span { width: 14em; flex: none; white-space: nowrap; }
 .lb-nav-panel output { min-width: 3em; text-align: right; letter-spacing: .06em; }
 .lb-nav-panel input[type="range"] { flex: 1; min-width: 0; accent-color: #2a2622; cursor: pointer; }
+.lb-nav-panel input[type="checkbox"] { width: 16px; height: 16px; margin: 0; accent-color: #2a2622; cursor: pointer; }
+.lb-nav-panel input[type="text"] {
+  flex: 1; min-width: 0; padding: 5px 8px; font: inherit; letter-spacing: inherit; color: inherit;
+  border: 1px solid rgba(60, 45, 20, .3); border-radius: 6px; background: rgba(255, 252, 240, .55);
+}
 
 @media (prefers-reduced-motion: reduce) {
   .lb-ring, .lb-refract { transition: none; }

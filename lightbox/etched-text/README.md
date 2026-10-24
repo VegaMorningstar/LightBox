@@ -13,6 +13,7 @@ await sign.ready;                                   // the font has loaded
 parent.append(sign.el);                             // an <svg>; size it with CSS width/height, it keeps its shape
 const { aspect, midY } = sign.measure();            // width over height; and where the middle of the small letters sits, 0..1 of the height
 sign.el.style.width = `${w}px`; sign.el.style.height = `${w / aspect}px`;
+sign.setText("other words");                       // change the words; call measure() again and re-fit the box
 sign.paint(ctx, x, y, w, h);                        // the same lettering on a canvas, for anything that redraws the surface (a magnifier)
 ```
 
