@@ -13,7 +13,7 @@
  * words are one line, always together: the whole lettering scales with the box it is given, it never wraps or breaks.
  *
  * The font is Yellowtail, a slanted brush script (Apache Licence 2.0, see LICENSE-Yellowtail.txt), subset to basic Latin. Pass `fontUrl` / `fontFamily`
- * for another. Every "e" is taken from italic Times New Roman (the `swap` option; `swap: null` for none).
+ * for another. Optional `swap` takes chosen letters from another installed face.
  */
 
 const FONT_URL = new URL("./Yellowtail-latin.woff2", import.meta.url).href;
@@ -25,10 +25,8 @@ const SHADE = "#000";                           // the wall in shade
 const FS = 100;                                 // the type size in the drawing's own units; everything else is relative to it
 const PAD = 8;                                  // room round the ink so the engraving's shading is not clipped
 
-/* `swap` lets a few letters come from another installed face, per letter, in the same line. The default takes every "e" from italic Times New Roman. */
-const SWAP = { chars: "e", fontFamily: "Times New Roman", fullName: ["Times New Roman Italic", "TimesNewRomanPS-ItalicMT"], style: "italic" };
-
-export function createEtchedText({ text = "", fontFamily = "EtchedScript", fontUrl = FONT_URL, weight = "400", swap = SWAP } = {}) {
+/* `swap` (off by default) lets a few letters come from another installed face, per letter, in the same line: { chars: "e", fullName: ["Times New Roman Italic", "TimesNewRomanPS-ItalicMT"], style: "italic" } */
+export function createEtchedText({ text = "", fontFamily = "EtchedScript", fontUrl = FONT_URL, weight = "400", swap = null } = {}) {
   let ready = Promise.resolve();
   const swapFamily = `${fontFamily}-swap`;
   if (typeof FontFace !== "undefined") {
