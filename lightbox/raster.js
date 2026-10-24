@@ -772,7 +772,7 @@ function createWindowView(scene, dpr, { mode, bg }) {
       // lie on it, so they are drawn over it, and the panel's grain and falloff go over everything, as on the page.
       if (scene.edgeCanvas) ctx.drawImage(scene.edgeCanvas, 0, 0, scene.edgeCanvas.width, scene.edgeCanvas.height, 0, 0, scene.W, scene.H);
       for (const btn of scene.buttons ?? []) {
-        if (btn.icon === "sign") ctx.drawImage(btn.canvas, btn.x - btn.w / 2, btn.y - btn.h / 2, btn.w, btn.h);      // the etched lettering
+        if (btn.icon === "sign") btn.paint(ctx, btn.x - btn.w / 2, btn.y - btn.h / 2, btn.w, btn.h);      // the etched lettering
         else (btn.icon === "knob" ? paintSocketKnob : paintSocketButton)(ctx, btn);
       }      // the push buttons lie on the panel, under the film
       drawScene(ctx, scene, { mode, view: { x0: cx - half, y0: cy - half, x1: cx + half, y1: cy + half } });

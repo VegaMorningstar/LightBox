@@ -1,19 +1,20 @@
 # etched-text
 
-Lettering set into a surface as a polished brass inlay: a dark brown groove round every letter, a hard dark shadow where the cut's far wall stands, a dark brown shaded wall along the upper-left of each
-stroke, a thin pale lip on the lower right, and a warm gold gradient with a bright diagonal sheen. All hard-edged layers (plus one faint soft shadow), so it
-stays crisp. Light is from the upper left.
+Lettering engraved into a surface, drawn as **vector** (SVG text), so it stays sharp at any size and at any zoom. The engraving matches the scale marks on the
+volume knob: the letters are cut in dark brown, a dark band lies along the upper-left inside edge of each stroke (the cut's wall in shade) and a thin pale lip
+catches the light along the lower-right edge. Light is from the upper left. The words are one line and stay together: the whole lettering scales to the box it is
+given and never wraps.
 
 ```js
 import { createEtchedText } from "./etched-text/etched.js";
 
 const sign = createEtchedText({ text: "dude with a pentax" });
-await sign.ready;                                     // the font has loaded
-const { aspect } = sign.measure();                    // the lettering's box, width over height, to fit it to a space
-const r = sign.render(48, devicePixelRatio);          // draw it 48 css px tall: { canvas, width, height, midY } (css px); midY lines the small letters up with something
-someContext.drawImage(sign.canvas, x, y, r.width, r.height);
+await sign.ready;                                   // the font has loaded
+parent.append(sign.el);                             // an <svg>; size it with CSS width/height, it keeps its shape
+const { aspect, midY } = sign.measure();            // width over height; and where the middle of the small letters sits, 0..1 of the height
+sign.el.style.width = `${w}px`; sign.el.style.height = `${w / aspect}px`;
+sign.paint(ctx, x, y, w, h);                        // the same lettering on a canvas, for anything that redraws the surface (a magnifier)
 ```
 
-Self-contained: `etched.js` and the font file (`Yellowtail-latin.woff2`, a slanted brush script, basic Latin only, Apache Licence 2.0, see `LICENSE-Yellowtail.txt`). Another font:
-`createEtchedText({ text, fontFamily: "MyFace", fontUrl: "./my-face.woff2" })`. The lettering is a Marshall-style brush script (Yellowtail), not Marshall's own logo face
-(that is a trademark and not an installable font).
+Self-contained: `etched.js` and the font (`Yellowtail-latin.woff2`, a slanted brush script, basic Latin only, Apache Licence 2.0, see `LICENSE-Yellowtail.txt`).
+Another font: `createEtchedText({ text, fontFamily: "MyFace", fontUrl: "./my-face.woff2" })`. A Marshall-style script, not Marshall's own logo face (a trademark).

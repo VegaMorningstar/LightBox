@@ -290,6 +290,7 @@
    they scroll away with the page like everything else on it. Here is where the corner is, relative to the panel's lit area. */
 .lb-root {
   --sb-top: calc(var(--edge-m) + var(--edge-f) + 6px - 14px);      /* just inside the fully lit part of the panel, above the film */
+  --sb-mid: calc(var(--sb-top) + 43px);                            /* the line through the centres of the knob and the buttons */
   --sb-right: calc(var(--edge-m) + var(--edge-f) + 6px);
   --sb-left: calc(var(--edge-m) + var(--edge-f) + 6px);
 }

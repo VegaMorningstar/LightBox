@@ -7,13 +7,15 @@
  *
  * Theme it with these variables, set on the button or on any ancestor:
  *   --sb-size   diameter (default 38px)      --sb-gap    space between buttons in a corner (12px)
- *   --sb-top, --sb-right, --sb-left   where a corner of buttons sits in its (positioned) container
+ *   --sb-mid, --sb-right, --sb-left   where the rows of buttons sit in their (positioned) container: --sb-mid is the line through the middle of every row
  *   --sb-ink    colour of the etched icon (#1e1916)
  */
 
 .sb-corner {
   position: absolute;
-  top: var(--sb-top, 12px);
+  /* every row is centred on one line, --sb-mid, whatever size its buttons are, so a knob and a button in different corners sit level */
+  top: var(--sb-mid, calc(var(--sb-top, 12px) + 19px));
+  transform: translateY(-50%);
   right: var(--sb-right, 12px);
   z-index: 5;
   display: flex;
@@ -21,7 +23,7 @@
   gap: var(--sb-gap, 14px);
 }
 
-.sb-corner-left { right: auto; left: var(--sb-left, 12px); top: calc(var(--sb-top, 12px) + 14px); }   /* (set a little lower than the buttons, clear of the panel's edge) */
+.sb-corner-left { right: auto; left: var(--sb-left, 12px); }
 
 .sb-button {
   --size: var(--sb-size, 38px);

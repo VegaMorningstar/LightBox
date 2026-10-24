@@ -236,8 +236,8 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
   // The sign: lettering etched into the panel between the volume knob and the buttons (etched-text/). It lies on the surface, under the film,
   // and the glasses draw it too (see updateCovered, which hands them its box).
   const sign = signText ? createEtchedText({ text: signText }) : null;
-  const signEl = document.createElement("canvas");
-  signEl.className = "lb-sign";
+  const signEl = sign?.el ?? document.createElement("div");          // an SVG: vector, so it stays sharp at any zoom
+  signEl.setAttribute("class", "lb-sign");
   let signBox = null;                         // {x, y, w, h}: its centre and size, in stage (sheet) px; null when there is no room for it
   let cornerEls = [], cornerButtons = [];   // the push buttons, which lie on the panel under the film
   let grain = panelGrain;
@@ -343,17 +343,15 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     // between the knob's scale (which reaches about 14 px past the knob) and the nearest button's socket, with a little air on each side
     const left = k.right - origin.left + 28, right = Math.min(...rights.map((b) => b.getBoundingClientRect().left)) - origin.left - 20;
     const gap = right - left;
-    const { aspect } = sign.measure();                                     // the lettering's box, width over height
-    if (gap < 150) return;
-    const h = Math.min(72, gap / aspect);
-    const r = sign.render(h, overlayDpr());
-    signEl.width = sign.canvas.width; signEl.height = sign.canvas.height;
-    signEl.getContext("2d").drawImage(sign.canvas, 0, 0);
+    const { aspect, midY } = sign.measure();                               // the lettering's box, width over height, and where the middle of its small letters is
+    if (gap < 60) return;
+    // the four words stay together on one line: the whole lettering gets smaller to fit the gap, it never wraps
+    const h = Math.min(64, gap / aspect), w = h * aspect;
     // centred in the gap, and the middle of the small letters level with the middle of the knob, so it reads as one line with it
     const cx = (left + right) / 2, kc = k.top - origin.top + k.height / 2;
-    const top = kc - r.midY;
-    Object.assign(signEl.style, { display: "block", left: `${cx - r.width / 2}px`, top: `${top}px`, width: `${r.width}px`, height: `${r.height}px` });
-    signBox = { x: cx, y: top + r.height / 2, w: r.width, h: r.height };
+    const top = kc - midY * h;
+    Object.assign(signEl.style, { display: "block", left: `${cx - w / 2}px`, top: `${top}px`, width: `${w}px`, height: `${h}px` });
+    signBox = { x: cx, y: top + h / 2, w, h };
   }
   sign?.ready.then(() => { if (cornerButtons.length) { placeSign(); if (sceneRef) render(); } });
 
@@ -373,7 +371,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
       setCovered(b, covered);
       shown.push({ x: cx, y: cy, size: r.width, icon: b.dataset.icon, angle: +(b.dataset.angle ?? 0) });
     }
-    if (signBox) shown.push({ x: signBox.x, y: signBox.y, size: signBox.h, icon: "sign", w: signBox.w, h: signBox.h, canvas: signEl });
+    if (signBox) shown.push({ x: signBox.x, y: signBox.y, size: signBox.h, icon: "sign", w: signBox.w, h: signBox.h, paint: (ctx, x, y, w, h) => sign.paint(ctx, x, y, w, h) });
     sceneRef.buttons = shown;       // the glasses draw them too, under the film
   }
 

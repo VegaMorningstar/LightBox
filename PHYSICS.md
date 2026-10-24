@@ -181,11 +181,13 @@ the rim picture → buttons → film → dust → light seep and lit holes → p
 - **The buttons lie on the panel, under the film.** Film slides over them and hides them. **A covered button cannot be pressed**; a
   press there grabs the film instead (`setCovered`, checked every frame against the strips).
 - **Dust lies on the board, never on the fittings**: the buttons, the knob and its markings are kept clear of dust, on the page and in the glass views (`clipOutButtons`).
-- **The sign** (`etched-text/`): the panel carries lettering etched into its surface between the volume knob and the buttons, in a Marshall-style brush script. It is a brass inlay: a dark brown
-  groove round each letter, a dark brown shaded wall on the upper-left of every stroke, a thin pale lip on the lower right (light from the upper left), a warm gold gradient and a bright diagonal sheen.
-  It lies on the surface under the film (film slides over it), the glasses draw it too, and dust is kept off it. It is centred on the knob's height, sized to the gap, and hidden when the gap is under
-  about 150 px (narrow windows). The words are the `signText` option (`placeSign` in `lightbox.js`). It sits in its groove (a hard dark shadow against the groove's lower right, no soft floating
-  shadow), is centred in the gap by its real ink extents, and the middle of its small letters is level with the middle of the knob so the two read as one line.
+- **The sign** (`etched-text/`): the panel carries lettering between the volume knob and the buttons, **engraved the same way as the knob's scale marks and its − and +**: cut in dark brown, a dark shaded band
+  along the upper-left inside edge of each stroke, a thin pale lip along the lower-right edge (light from the upper left). It is **vector** (SVG text with an SVG filter), so it stays sharp when zoomed;
+  the magnifier gets a canvas copy of it like the knob's. The four words are **one line that always stays together**: the whole lettering scales down to fit the gap (it hides only if the gap is under about 60 px)
+  and never wraps. It lies on the surface under the film, dust is kept off it, it is centred in the gap by its real ink extents, and the middle of its small letters is level with the middle of the knob
+  (`placeSign` in `lightbox.js`; the words are the `signText` option).
+- **The knob and the buttons are centred on one line**: every corner row is centred on `--sb-mid`, whatever size its buttons are, so the knob's centre and the buttons' centres are level
+  (`buttons.css` `.sb-corner`).
 - **The volume knob** (`socket-buttons/knob.js`) sits in the top left corner of the panel and sets the page's overall (master) volume, 0 to 2×,
   straight up = 1× (the normal level; the dial turns evenly through it, with no catch there). It is a rotary dial in the same socket: a knurled rim that turns, a brushed-metal face whose sheen
   does not turn (the light is fixed), a dark mark, and a scale round it, **engraved into the surface** (a dark shaded wall on the upper left of each groove, a light lip on the lower right), with a − and a + standing where the two end ticks would be. It turns by dragging round its centre or with the arrow keys, sweeps a half circle (180°),
