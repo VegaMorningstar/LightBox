@@ -12,10 +12,11 @@
  * edge of every stroke (the cut's wall in shade) and a thin pale lip catches the light along the lower-right edge. Light is from the upper left. The
  * words are one line, always together: the whole lettering scales with the box it is given, it never wraps or breaks.
  *
- * The font is italic Times New Roman, which every desktop already has (no file to ship). Pass `fontFamily` (and `style` / `weight`) for another installed
- * face, or `fontUrl` as well to load a font file of your own.
+ * The font is Yellowtail, a slanted brush script (Apache Licence 2.0, see LICENSE-Yellowtail.txt), subset to basic Latin. Pass `fontUrl` / `fontFamily`
+ * for another. Every "e" is taken from italic Times New Roman (the `swap` option; `swap: null` for none).
  */
 
+const FONT_URL = new URL("./Yellowtail-latin.woff2", import.meta.url).href;
 const NS = "http://www.w3.org/2000/svg";
 
 const INK = "rgba(54, 40, 24, 0.86)";          // the dark brown of the cut, as on the knob's scale
@@ -24,18 +25,30 @@ const SHADE = "#000";                           // the wall in shade
 const FS = 100;                                 // the type size in the drawing's own units; everything else is relative to it
 const PAD = 8;                                  // room round the ink so the engraving's shading is not clipped
 
-export function createEtchedText({ text = "", fontFamily = "Times New Roman", fontUrl = null, weight = "400", style = "italic" } = {}) {
+/* `swap` lets a few letters come from another installed face, per letter, in the same line. The default takes every "e" from italic Times New Roman. */
+const SWAP = { chars: "e", fontFamily: "Times New Roman", fullName: ["Times New Roman Italic", "TimesNewRomanPS-ItalicMT"], style: "italic" };
+
+export function createEtchedText({ text = "", fontFamily = "EtchedScript", fontUrl = FONT_URL, weight = "400", swap = SWAP } = {}) {
   let ready = Promise.resolve();
-  if (fontUrl && typeof FontFace !== "undefined") {                  // only a font file of your own needs loading; Times New Roman is already on the machine
-    const face = new FontFace(fontFamily, `url(${fontUrl})`, { weight, style });
-    ready = face.load().then((f) => { document.fonts.add(f); }).catch(() => { /* falls back to the system face */ });
+  const swapFamily = `${fontFamily}-swap`;
+  if (typeof FontFace !== "undefined") {
+    const main = new FontFace(fontFamily, `url(${fontUrl})`, { weight });
+    const loads = [main.load().then((f) => { document.fonts.add(f); }).catch(() => { /* falls back to a system script face */ })];
+    if (swap) {
+      // a face that covers only the swapped letters (unicode-range), taken from the machine's own fonts; if it is not there, those letters stay in the main face
+      const range = [...swap.chars].map((c) => `U+${c.codePointAt(0).toString(16).toUpperCase()}`).join(",");
+      const src = swap.fullName.map((n) => `local("${n}")`).join(", ");
+      const alt = new FontFace(swapFamily, src, { unicodeRange: range, style: swap.style });
+      loads.push(alt.load().then((f) => { document.fonts.add(f); }).catch(() => { /* not installed: ignore */ }));
+    }
+    ready = Promise.all(loads).then(() => {});
   }
-  const stack = `"${fontFamily}", Times, "Liberation Serif", serif`;
+  const stack = `"${swapFamily}", "${fontFamily}", "Snell Roundhand", "Brush Script MT", cursive`;
   const probe = document.createElement("canvas").getContext("2d");
 
   /* the lettering's real extents (the ink, not the advance) in the drawing's units */
   function extents() {
-    probe.font = `${style} ${weight} ${FS}px ${stack}`;
+    probe.font = `${weight} ${FS}px ${stack}`;
     const m = probe.measureText(text), x = probe.measureText("x");
     const left = m.actualBoundingBoxLeft, right = m.actualBoundingBoxRight, up = m.actualBoundingBoxAscent, down = m.actualBoundingBoxDescent;
     return { left, up, W: left + right + 2 * PAD, H: up + down + 2 * PAD, base: PAD + up, xh: x.actualBoundingBoxAscent };
@@ -53,7 +66,7 @@ export function createEtchedText({ text = "", fontFamily = "Times New Roman", fo
     `<feOffset in="SourceAlpha" dx="1.8" dy="2.3" result="s2"/><feComposite in="s2" in2="SourceAlpha" operator="out" result="lipBand"/><feGaussianBlur in="lipBand" stdDeviation="0.6" result="lipSoft"/>` +
     `<feFlood flood-color="${LIP}" flood-opacity=".95"/><feComposite in2="lipSoft" operator="in" result="lip"/>` +
     `<feMerge><feMergeNode in="lip"/><feMergeNode in="SourceGraphic"/><feMergeNode in="shadowIn"/></feMerge></filter></defs>` +
-    `<g filter="url(#${id})"><text fill="${INK}" font-size="${FS}" font-weight="${weight}" font-style="${style}" font-family='${stack.replace(/'/g, "")}' xml:space="preserve"></text></g>`;
+    `<g filter="url(#${id})"><text fill="${INK}" font-size="${FS}" font-weight="${weight}" font-family='${stack.replace(/'/g, "")}' xml:space="preserve"></text></g>`;
   const node = el.querySelector("text");
   node.textContent = text;
 
@@ -79,7 +92,7 @@ export function createEtchedText({ text = "", fontFamily = "Times New Roman", fo
     ctx.save();
     ctx.translate(x, y);
     ctx.scale(u, u);
-    ctx.font = `${style} ${weight} ${FS}px ${stack}`;
+    ctx.font = `${weight} ${FS}px ${stack}`;
     ctx.textBaseline = "alphabetic";
     const bx = PAD + k.left, by = k.base;
     ctx.fillStyle = LIP; ctx.globalAlpha = 0.85; ctx.fillText(text, bx + 1.8, by + 2.3);   // the lip, under

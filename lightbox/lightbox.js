@@ -347,7 +347,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     const cx = origin.width / 2, room = 2 * Math.min(cx - left, right - cx);
     if (room < 60) return;
     // the four words stay together on one line: the whole lettering gets smaller to fit, it never wraps
-    const h = Math.min(42, 0.8 * room / aspect), w = h * aspect;
+    const h = Math.min(52, 0.8 * room / aspect), w = h * aspect;
     // the middle of the small letters level with the middle of the knob, so it reads as one line with it
     const kc = k.top - origin.top + k.height / 2;
     const top = kc - midY * h;
