@@ -342,13 +342,14 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     const k = knob.getBoundingClientRect();
     // between the knob's scale (which reaches about 14 px past the knob) and the nearest button's socket, with a little air on each side
     const left = k.right - origin.left + 28, right = Math.min(...rights.map((b) => b.getBoundingClientRect().left)) - origin.left - 20;
-    const gap = right - left;
     const { aspect, midY } = sign.measure();                               // the lettering's box, width over height, and where the middle of its small letters is
-    if (gap < 60) return;
-    // the four words stay together on one line: the whole lettering gets smaller to fit the gap, it never wraps
-    const h = Math.min(52, 0.8 * gap / aspect), w = h * aspect;
-    // centred in the gap, and the middle of the small letters level with the middle of the knob, so it reads as one line with it
-    const cx = (left + right) / 2, kc = k.top - origin.top + k.height / 2;
+    // centred on the screen (the panel's middle), not on the gap, so the room it has is twice the smaller distance from the middle to the knob's side or the buttons' side
+    const cx = origin.width / 2, room = 2 * Math.min(cx - left, right - cx);
+    if (room < 60) return;
+    // the four words stay together on one line: the whole lettering gets smaller to fit, it never wraps
+    const h = Math.min(52, 0.8 * room / aspect), w = h * aspect;
+    // the middle of the small letters level with the middle of the knob, so it reads as one line with it
+    const kc = k.top - origin.top + k.height / 2;
     const top = kc - midY * h;
     Object.assign(signEl.style, { display: "block", left: `${cx - w / 2}px`, top: `${top}px`, width: `${w}px`, height: `${h}px` });
     signBox = { x: cx, y: top + h / 2, w, h };
