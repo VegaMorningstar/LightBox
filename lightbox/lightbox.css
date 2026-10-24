@@ -291,11 +291,13 @@
    they scroll away with the page like everything else on it. Here is where the corner is, relative to the panel's lit area. */
 .lb-root {
   --sb-top: calc(var(--edge-m) + var(--edge-f) + 6px - 14px);      /* just inside the fully lit part of the panel, above the film */
+  --sb-mid: calc(var(--sb-top) + 43px);                            /* the line through the centres of the knob and the buttons */
   --sb-right: calc(var(--edge-m) + var(--edge-f) + 6px);
   --sb-left: calc(var(--edge-m) + var(--edge-f) + 6px);
 }
 /* the buttons lie on the panel itself: under the film, the dust and the glass */
 .lb-stage > .sb-corner { z-index: -1; }
+.lb-sign { position: absolute; pointer-events: none; z-index: -1; display: none; }   /* etched into the panel, under the film */
 /* the sliders panel's holder: it only anchors the panel, which floats */
 .lb-nav { position: absolute; top: 0; right: 0; width: 0; height: 0; z-index: 5; font: 500 11px/1 ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: .2em; text-transform: uppercase; color: #5f5036; }
 
@@ -336,6 +338,11 @@
 .lb-nav-panel label > span { width: 14em; flex: none; white-space: nowrap; }
 .lb-nav-panel output { min-width: 3em; text-align: right; letter-spacing: .06em; }
 .lb-nav-panel input[type="range"] { flex: 1; min-width: 0; accent-color: #2a2622; cursor: pointer; }
+.lb-nav-panel input[type="checkbox"] { width: 16px; height: 16px; margin: 0; accent-color: #2a2622; cursor: pointer; }
+.lb-nav-panel input[type="text"] {
+  flex: 1; min-width: 0; padding: 5px 8px; font: inherit; letter-spacing: inherit; color: inherit;
+  border: 1px solid rgba(60, 45, 20, .3); border-radius: 6px; background: rgba(255, 252, 240, .55);
+}
 
 @media (prefers-reduced-motion: reduce) {
   .lb-ring, .lb-refract { transition: none; }

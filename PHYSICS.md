@@ -231,6 +231,15 @@ the rim picture → buttons → film → dust → light seep and lit holes → p
 - **The buttons lie on the panel, under the film.** Film slides over them and hides them. **A covered button cannot be pressed**; a
   press there grabs the film instead (`setCovered`, checked every frame against the strips).
 - **Dust lies on the board, never on the fittings**: the buttons, the knob and its markings are kept clear of dust, on the page and in the glass views (`clipOutButtons`).
+- **The sign** (`etched-text/`): the panel carries lettering between the volume knob and the buttons, **engraved the same way as the knob's scale marks and its − and +**: cut in dark brown, a dark shaded band
+  along the upper-left inside edge of each stroke, a thin pale lip along the lower-right edge (light from the upper left). It is **vector** (SVG text with an SVG filter), so it stays sharp when zoomed;
+  the magnifier gets a canvas copy of it like the knob's. The four words are **one line that always stays together**: the whole lettering scales down to fit about 80% of the gap (it hides only if the gap is under about 60 px)
+  and never wraps. It lies on the surface under the film, dust is kept off it, it is centred on the screen by its real ink extents (so its room is set by the nearer of the knob and the buttons), and the middle of its small letters is level with the middle of the knob
+  (`placeSign` in `lightbox.js`; the words are the `signText` option).
+- **The sign can be switched off or reworded** from the sliders menu (group "Sign": "Show text", and "Words"). Off, or an empty line, hides it (`placeSign` returns early and the glass views stop drawing it);
+  typing re-measures it, so it is re-fitted and re-centred as you type. It starts on, with the `signText` option's words.
+- **The knob and the buttons are centred on one line**: every corner row is centred on `--sb-mid`, whatever size its buttons are, so the knob's centre and the buttons' centres are level
+  (`buttons.css` `.sb-corner`).
 - **The volume knob** (`socket-buttons/knob.js`) sits in the top left corner of the panel and sets the page's overall (master) volume, 0 to 2×,
   straight up = 1× (the normal level; the dial turns evenly through it, with no catch there). It is a rotary dial in the same socket: a knurled rim that turns, a brushed-metal face whose sheen
   does not turn (the light is fixed), a dark mark, and a scale round it, **engraved into the surface** (a dark shaded wall on the upper left of each groove, a light lip on the lower right), with a − and a + standing where the two end ticks would be. It turns by dragging round its centre or with the arrow keys, sweeps a half circle (180°),
