@@ -3,22 +3,24 @@
  *   import { createEtchedText } from "./etched-text/etched.js";
  *
  *   const sign = createEtchedText({ text: "dude with a pentax" });
- *   await sign.ready;                                    // the font has loaded and the lettering is drawn
- *   const { canvas, aspect } = sign.render(height, dpr); // a transparent canvas: lay it on the surface
- *   ctx.drawImage(sign.canvas, x, y, width, height);     // or draw it into anything else, e.g. a magnifier's view
+ *   await sign.ready;                                   // the font has loaded
+ *   const { aspect } = sign.measure();                  // width over height of the lettering's box, to fit it to a space
+ *   const r = sign.render(48, devicePixelRatio);        // draw it 48 css px tall: { canvas, width, height, midY }
+ *   ctx.drawImage(r.canvas, x, y, r.width, r.height);   // midY: where the middle of the small letters sits in the box, to line it up with something
  *
- * The look, all from a few hard-edged layers (no soft haze, so it stays crisp): the letters are cut into the surface, a dark brown groove
- * runs round them, a dark brown shadow lies along the upper-left wall of each stroke (the light is from the upper left), a thin pale lip
- * catches the light along the lower-right edge, and the inlay itself is polished brass, a warm gold gradient with a bright diagonal sheen.
+ * The look is a brass inlay cut into the surface and sitting in its groove, not stuck on top of it: a dark brown groove runs round every letter, a hard dark
+ * brown shadow lies against the lower-right of the groove where the surface rises, a dark brown shaded wall runs along the upper-left inside each stroke, a
+ * thin pale lip catches the light along the lower-right edge, and the brass itself is a warm gold gradient with a bright diagonal sheen. Light is from the
+ * upper left. Every layer is hard edged, so it stays crisp.
  *
- * The font is a bold, slanted, connected brush script (Pacifico, SIL Open Font Licence, see OFL-Pacifico.txt), subset to basic Latin.
- * Pass `fontUrl` / `fontFamily` to use another.
+ * The font is Yellowtail, a slanted brush script (Apache Licence 2.0, see LICENSE-Yellowtail.txt), subset to basic Latin. Pass `fontUrl` / `fontFamily` for
+ * another.
  */
 
-const FONT_URL = new URL("./Pacifico-latin.woff2", import.meta.url).href;
+const FONT_URL = new URL("./Yellowtail-latin.woff2", import.meta.url).href;
 
 const BRASS = [[0, "#fff0bd"], [0.3, "#f0cd72"], [0.55, "#d19a38"], [0.8, "#a8721f"], [1, "#865a1a"]];
-const BROWN = "#2f1b0a";           // the dark brown of the groove and the shadow
+const BROWN = "#2a1708";           // the dark brown of the groove and the shadow
 const LIP = "#fff1cf";             // the catch-light along the lower-right edge
 
 export function createEtchedText({ text = "", fontFamily = "EtchedScript", fontUrl = FONT_URL, weight = "400" } = {}) {
@@ -29,16 +31,29 @@ export function createEtchedText({ text = "", fontFamily = "EtchedScript", fontU
   }
   const canvas = document.createElement("canvas");
   const stack = `"${fontFamily}", "Snell Roundhand", "Brush Script MT", cursive`;
+  const FS = 0.72;                                                    // the type size as a share of the height asked for
 
-  /* draw the lettering so it is `height` css px tall, at `dpr` device px per css px; returns its width in css px */
+  /* the lettering's real extents at a type size: the ink (not the advance), so it can be centred and fitted exactly */
+  function ink(fs) {
+    const g = canvas.getContext("2d");
+    g.font = `${weight} ${fs}px ${stack}`;
+    const m = g.measureText(text);
+    const xm = g.measureText("x");
+    return { left: m.actualBoundingBoxLeft, right: m.actualBoundingBoxRight, up: m.actualBoundingBoxAscent, down: m.actualBoundingBoxDescent, xh: xm.actualBoundingBoxAscent };
+  }
+  /* the box's width over its height, whatever the size */
+  function measure() {
+    const fs = 100, k = ink(fs), pad = fs * 0.12;
+    return { aspect: (k.left + k.right + 2 * pad) / (k.up + k.down + 2 * pad) };
+  }
+
+  /* draw the lettering so its box is `height` css px tall, at `dpr` device px per css px */
   function render(height, dpr = 1) {
     const S = Math.max(1, dpr);
-    const fs = height * 0.74;                                         // the type size that fills the height with room for the tails
-    const probe = canvas.getContext("2d");
-    probe.font = `${weight} ${fs}px ${stack}`;
-    const tw = probe.measureText(text).width;
-    const padX = fs * 0.16, padY = height * 0.14;
-    const W = Math.ceil(tw + 2 * padX), H = Math.ceil(height + 2 * padY);
+    const probe = ink(100), unit = (probe.up + probe.down + 24) / 100;     // box height per unit of type size, with a 12% pad each side
+    const fs = height / unit;
+    const k = ink(fs), pad = fs * 0.12;
+    const W = Math.ceil(k.left + k.right + 2 * pad), H = Math.ceil(k.up + k.down + 2 * pad);
     canvas.width = Math.ceil(W * S); canvas.height = Math.ceil(H * S);
     const g = canvas.getContext("2d");
     g.setTransform(S, 0, 0, S, 0, 0);
@@ -46,8 +61,8 @@ export function createEtchedText({ text = "", fontFamily = "EtchedScript", fontU
     g.font = `${weight} ${fs}px ${stack}`;
     g.textBaseline = "alphabetic";
     g.lineJoin = "round";
-    const bx = padX, by = padY + height * 0.72;                       // the baseline
-    const line = Math.max(0.7, height * 0.017);                       // the thickness of the groove and walls, in css px
+    const bx = pad + k.left, by = pad + k.up;                         // where the text starts: its left ink edge and its baseline
+    const line = Math.max(0.8, fs * 0.022);                           // the thickness of the groove and walls, in css px
 
     // a layer is a copy of the lettering mask, optionally shifted or grown
     const mask = (ctx, dx = 0, dy = 0, grow = 0) => {
@@ -62,26 +77,17 @@ export function createEtchedText({ text = "", fontFamily = "EtchedScript", fontU
     const tint = (c, x, colour, alpha) => { x.save(); x.setTransform(1, 0, 0, 1, 0, 0); x.globalCompositeOperation = "source-in"; x.fillStyle = colour; x.globalAlpha = alpha; x.fillRect(0, 0, c.width, c.height); x.restore(); };
     const stamp = (c) => { g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(c, 0, 0); g.restore(); };
 
-    // 1. the dark brown shadow beyond the groove, a little to the lower right and softly spread (the only soft layer, and a faint one).
-    //    The letters are drawn far off to the left and only their shadow is thrown back onto the canvas (shadow offsets ignore the transform).
-    {
-      const [c, x] = layer();
-      const FAR = 4000;
-      x.shadowColor = BROWN; x.shadowBlur = line * 1.6 * S; x.shadowOffsetX = (FAR + line * 0.9) * S; x.shadowOffsetY = line * 1.2 * S;
-      x.translate(-FAR, 0);
-      mask(x, 0, 0, line * 0.9);
-      g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 0.55; g.drawImage(c, 0, 0); g.restore();
-    }
-    // 2. the groove: the letters grown by a line's width, in dark brown
-    { const [c, x] = layer(); mask(x, 0, 0, line); tint(c, x, BROWN, 0.92); stamp(c); }
+    // 1. the surface's own shadow against the groove: a hard dark brown band to the lower right, where the cut's far wall stands in shade
+    { const [c, x] = layer(); mask(x, line * 1.1, line * 1.3, line * 1.5); tint(c, x, BROWN, 0.55); stamp(c); }
+    // 2. the groove: the letters grown a little, in dark brown, all the way round
+    { const [c, x] = layer(); mask(x, 0, 0, line * 1.35); tint(c, x, BROWN, 0.95); stamp(c); }
     // 3. the brass inlay: a warm gold gradient down the letters and a bright diagonal sheen across them
     {
       const [c, x] = layer(); mask(x);
       x.save(); x.setTransform(1, 0, 0, 1, 0, 0); x.globalCompositeOperation = "source-in";
-      const v = x.createLinearGradient(0, (by - fs * 0.78) * S, 0, (by + fs * 0.08) * S);
+      const v = x.createLinearGradient(0, (by - k.up) * S, 0, (by + k.down * 0.2) * S);
       for (const [o, col] of BRASS) v.addColorStop(o, col);
       x.fillStyle = v; x.fillRect(0, 0, c.width, c.height);
-      // the sheen: a narrow bright band on the diagonal, hard edged (polished metal), and a fainter second one
       x.globalCompositeOperation = "source-atop";
       const d = x.createLinearGradient(0, 0, c.width, c.height * 0.55);
       d.addColorStop(0, "rgba(255,255,255,0)"); d.addColorStop(0.26, "rgba(255,246,214,0)"); d.addColorStop(0.3, "rgba(255,250,228,0.85)"); d.addColorStop(0.36, "rgba(255,238,190,0)");
@@ -89,19 +95,19 @@ export function createEtchedText({ text = "", fontFamily = "EtchedScript", fontU
       x.fillStyle = d; x.fillRect(0, 0, c.width, c.height);
       x.restore(); stamp(c);
     }
-    // 4. the shaded wall: a dark brown band along the upper-left edge of every stroke, inside the brass (the groove's wall in shade)
+    // 4. the shaded wall: a dark brown band along the upper-left inside edge of every stroke (the groove's wall in shade)
     {
       const [c, x] = layer(); mask(x);
-      x.save(); x.globalCompositeOperation = "destination-out"; x.translate(line * 0.9, line * 0.9); mask(x); x.restore();   // what is left is the band
-      tint(c, x, BROWN, 0.7); stamp(c);
+      x.save(); x.globalCompositeOperation = "destination-out"; x.translate(line * 1.1, line * 1.1); mask(x); x.restore();
+      tint(c, x, BROWN, 0.72); stamp(c);
     }
     // 5. the lip: a thin pale line along the lower-right, just inside the edge where the metal catches the light
     {
       const [c, x] = layer(); mask(x, 0, 0);
-      x.save(); x.globalCompositeOperation = "destination-out"; x.translate(-line * 0.7, -line * 0.7); mask(x); x.restore();
-      tint(c, x, LIP, 0.55); stamp(c);
+      x.save(); x.globalCompositeOperation = "destination-out"; x.translate(-line * 0.8, -line * 0.8); mask(x); x.restore();
+      tint(c, x, LIP, 0.6); stamp(c);
     }
-    return { canvas, width: W, height: H };
+    return { canvas, width: W, height: H, midY: by - k.xh / 2 };
   }
-  return { canvas, ready, render };
+  return { canvas, ready, render, measure };
 }

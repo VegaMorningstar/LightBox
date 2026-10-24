@@ -340,17 +340,20 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     const rights = cornerButtons.filter((b) => b.dataset.icon !== "knob");
     if (!knob || !rights.length) return;
     const k = knob.getBoundingClientRect();
-    const left = k.right - origin.left + 34, right = Math.min(...rights.map((b) => b.getBoundingClientRect().left)) - origin.left - 22;
+    // between the knob's scale (which reaches about 14 px past the knob) and the nearest button's socket, with a little air on each side
+    const left = k.right - origin.left + 28, right = Math.min(...rights.map((b) => b.getBoundingClientRect().left)) - origin.left - 20;
     const gap = right - left;
-    const ASPECT = 4.7;                                                    // the lettering's width over its height
+    const { aspect } = sign.measure();                                     // the lettering's box, width over height
     if (gap < 150) return;
-    const h = Math.min(62, gap / ASPECT);
+    const h = Math.min(72, gap / aspect);
     const r = sign.render(h, overlayDpr());
     signEl.width = sign.canvas.width; signEl.height = sign.canvas.height;
     signEl.getContext("2d").drawImage(sign.canvas, 0, 0);
-    const cx = (left + right) / 2, cy = k.top - origin.top + k.height / 2;
-    Object.assign(signEl.style, { display: "block", left: `${cx - r.width / 2}px`, top: `${cy - r.height / 2}px`, width: `${r.width}px`, height: `${r.height}px` });
-    signBox = { x: cx, y: cy, w: r.width, h: r.height };
+    // centred in the gap, and the middle of the small letters level with the middle of the knob, so it reads as one line with it
+    const cx = (left + right) / 2, kc = k.top - origin.top + k.height / 2;
+    const top = kc - r.midY;
+    Object.assign(signEl.style, { display: "block", left: `${cx - r.width / 2}px`, top: `${top}px`, width: `${r.width}px`, height: `${r.height}px` });
+    signBox = { x: cx, y: top + r.height / 2, w: r.width, h: r.height };
   }
   sign?.ready.then(() => { if (cornerButtons.length) { placeSign(); if (sceneRef) render(); } });
 
