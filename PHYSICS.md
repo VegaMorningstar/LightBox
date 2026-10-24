@@ -237,7 +237,7 @@ the rim picture → buttons → film → dust → light seep and lit holes → p
   and never wraps. It lies on the surface under the film, dust is kept off it, it is centred on the screen by its real ink extents (so its room is set by the nearer of the knob and the buttons), and the middle of its small letters is level with the middle of the knob
   (`placeSign` in `lightbox.js`; the words are the `signText` option).
 - **The sign can be switched off or reworded** from the sliders menu (group "Sign": "Show text", and "Words"). Off, or an empty line, hides it (`placeSign` returns early and the glass views stop drawing it);
-  typing re-measures it, so it is re-fitted and re-centred as you type. It starts on, with the `signText` option's words.
+  typing re-measures it, so it is re-fitted and re-centred as you type. It starts **hidden** (the `showSign` option turns it on from the start); the words are the `signText` option's.
 - **The knob and the buttons are centred on one line**: every corner row is centred on `--sb-mid`, whatever size its buttons are, so the knob's centre and the buttons' centres are level
   (`buttons.css` `.sb-corner`).
 - **The volume knob** (`socket-buttons/knob.js`) sits in the top left corner of the panel and sets the page's overall (master) volume, 0 to 2×,
