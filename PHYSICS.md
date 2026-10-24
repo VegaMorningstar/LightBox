@@ -183,7 +183,7 @@ the rim picture → buttons → film → dust → light seep and lit holes → p
 - **Dust lies on the board, never on the fittings**: the buttons, the knob and its markings are kept clear of dust, on the page and in the glass views (`clipOutButtons`).
 - **The sign** (`etched-text/`): the panel carries lettering between the volume knob and the buttons, **engraved the same way as the knob's scale marks and its − and +**: cut in dark brown, a dark shaded band
   along the upper-left inside edge of each stroke, a thin pale lip along the lower-right edge (light from the upper left). It is **vector** (SVG text with an SVG filter), so it stays sharp when zoomed;
-  the magnifier gets a canvas copy of it like the knob's. The four words are **one line that always stays together**: the whole lettering scales down to fit the gap (it hides only if the gap is under about 60 px)
+  the magnifier gets a canvas copy of it like the knob's. The four words are **one line that always stays together**: the whole lettering scales down to fit about 80% of the gap (it hides only if the gap is under about 60 px)
   and never wraps. It lies on the surface under the film, dust is kept off it, it is centred in the gap by its real ink extents, and the middle of its small letters is level with the middle of the knob
   (`placeSign` in `lightbox.js`; the words are the `signText` option).
 - **The knob and the buttons are centred on one line**: every corner row is centred on `--sb-mid`, whatever size its buttons are, so the knob's centre and the buttons' centres are level

@@ -204,7 +204,7 @@ function buildControls(rows, { onOrganize, onButton, sliders = true, volume = nu
   return { wrap: nav, corner: [...(sliders ? [toggle] : []), organize], left: knob ? [knob.el] : [], setters };
 }
 
-export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFade = 0.85, volumes = {}, outerGlass = {}, filmDrag = 1, filmFlutter = 1, stacking = 1, panelFalloff = 1.25, panelGlow = 1, panelGrain = 1, lightBleed = 1, lightSeep = 1.6, seepSpread = 10, signText = "dude with a pentax", size, controls = true, sliders = true } = {}) {
+export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFade = 0.85, volumes = {}, outerGlass = {}, filmDrag = 1, filmFlutter = 1, stacking = 1, panelFalloff = 1.25, panelGlow = 1, panelGrain = 1, lightBleed = 1, lightSeep = 1.6, seepSpread = 10, signText = "dude_with_a_pentax", size, controls = true, sliders = true } = {}) {
   root.classList.add("lb-root");
   const stage = div("lb-stage");
   root.replaceChildren(stage);
@@ -346,7 +346,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     const { aspect, midY } = sign.measure();                               // the lettering's box, width over height, and where the middle of its small letters is
     if (gap < 60) return;
     // the four words stay together on one line: the whole lettering gets smaller to fit the gap, it never wraps
-    const h = Math.min(64, gap / aspect), w = h * aspect;
+    const h = Math.min(52, 0.8 * gap / aspect), w = h * aspect;
     // centred in the gap, and the middle of the small letters level with the middle of the knob, so it reads as one line with it
     const cx = (left + right) / 2, kc = k.top - origin.top + k.height / 2;
     const top = kc - midY * h;
