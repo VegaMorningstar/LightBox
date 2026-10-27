@@ -16,7 +16,7 @@ import { createSocketButton, mountSocketCorner, setCovered, setPressed, ICONS } 
 import { createSocketKnob } from "./socket-buttons/knob.js";
 import { createEtchedText } from "./etched-text/etched.js";
 import { createStartScreen } from "./start-screen/start-screen.js";
-import { createToggleSwitch } from "./toggle-switch/toggle.js";
+import { createPressButton } from "./press-button/press-button.js";
 import { createSpecks } from "./dust.js";
 import { createFilm } from "./film.js";
 import { bakeEdge, buildFilmFilter, createLensView, createNegView, paintGlowLayer, clipOutButtons, frameQuads, holeSpots, paintOverlay, parseColor, readScene, stripQuad, warmNegatives } from "./raster.js";
@@ -227,8 +227,8 @@ function buildControls(rows, { onOrganize, onButton, sliders = true, volume = nu
   // the volume knob: it sits in the top left corner of the panel and sets the page's overall volume (it clicks as it turns, as the eyepiece ring does)
   const knob = volume ? createSocketKnob({ label: "Volume", min: 0, max: 2, value: volume.value, ...volume.sounds, onInput: (v) => { volume.onInput(v); setters.vol_master?.(v); } }) : null;
   if (knob) setters.vol_master_knob = (v) => knob.set(v);
-  // the brass switch next to the knob: it turns the light box's light on and off (toggle-switch/, start-screen/)
-  const light = lightSwitch ? createToggleSwitch({ label: "Light", on: false, onChange: lightSwitch.onChange }) : null;
+  // the press button next to the knob: it turns the light box's light on and off (press-button/, start-screen/)
+  const light = lightSwitch ? createPressButton({ label: "Light", on: false, onChange: lightSwitch.onChange }) : null;
   return { wrap: nav, corner: [...(sliders ? [toggle] : []), organize], left: [...(knob ? [knob.el] : []), ...(light ? [light.el] : [])], lightSwitch: light, setters };
 }
 
@@ -402,14 +402,14 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     for (const b of cornerButtons) {
       const r = b.getBoundingClientRect();
       const cx = r.left - origin.left + r.width / 2, cy = r.top - origin.top + r.height / 2, rad = r.width / 2;
-      const rect = b.dataset.icon === "toggle";                  // the light switch is a rectangle, the rest are round
+      const rect = b.dataset.icon === "press";                   // the light button is a rectangle, the rest are round
       let covered = false;
       for (let k = 0; k < 9 && !covered; k++) {                 // the centre and eight points round its edge
         const a = (k - 1) * (Math.PI / 4), px = k ? cx + (rect ? Math.sign(Math.cos(a)) * r.width / 2 * (Math.abs(Math.cos(a)) > 0.1 ? 1 : 0) : Math.cos(a) * rad) : cx, py = k ? cy + (rect ? Math.sign(Math.sin(a)) * r.height / 2 * (Math.abs(Math.sin(a)) > 0.1 ? 1 : 0) : Math.sin(a) * rad) : cy;
         covered = quads.some((q) => insideQuad(q, px, py));
       }
       setCovered(b, covered);
-      shown.push(rect ? { x: cx, y: cy, size: r.height, icon: "toggle", w: r.width, h: r.height, on: b.getAttribute("aria-checked") === "true" } : { x: cx, y: cy, size: r.width, icon: b.dataset.icon, angle: +(b.dataset.angle ?? 0) });
+      shown.push(rect ? { x: cx, y: cy, size: r.height, icon: "press", w: r.width, h: r.height, on: b.getAttribute("aria-checked") === "true" } : { x: cx, y: cy, size: r.width, icon: b.dataset.icon, angle: +(b.dataset.angle ?? 0) });
     }
     if (signBox) shown.push({ x: signBox.x, y: signBox.y, size: signBox.h, icon: "sign", w: signBox.w, h: signBox.h, paint: (ctx, x, y, w, h) => sign.paint(ctx, x, y, w, h) });
     sceneRef.buttons = shown;       // the glasses draw them too, under the film

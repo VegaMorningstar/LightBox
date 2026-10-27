@@ -1,0 +1,32 @@
+/* press-button: a latching push button on a weathered plate: a patinated teal-green metal plate with rust blooming through it, four corner screw holes, two
+ * eyelets and two holes, and in the middle a brass-rimmed round recess holding a cream knob with a fluted edge. Press it and it goes IN and stays in (on);
+ * press again and it springs back out (off). Light is from the upper left: the knob stands proud and casts a shadow to the lower right; pushed in it is lower
+ * and the shadow is gone. The plate is an SVG (see press-button.js), so it stays sharp at any zoom. Theme with --pb-w and --pb-h (default 95.9 by 43.4 px: that makes the brass-rimmed round button 38 px across, the same as the other round buttons; keep the ratio 168 to 76). */
+
+.pb {
+  --w: var(--pb-w, 95.9px);
+  --h: var(--pb-h, 43.4px);
+  position: relative;
+  flex: none;
+  display: block;
+  width: var(--w);
+  height: var(--h);
+  margin: 0 0 0 12px;                 /* a little more air than between buttons: the volume knob's scale reaches past the knob */
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.pb[data-covered] { pointer-events: none; }
+.pb:focus-visible { outline: 2px solid #2a2622; outline-offset: 4px; border-radius: 6px; }
+/* the drawing has room all round the plate (8 of its 168 by 76 units) for the socket the plate is set into */
+.pb-plate { position: absolute; inset: -10.526% -4.762%; width: 109.524%; height: 121.053%; display: block; overflow: visible; }
+
+/* the knob: it moves in toward its centre and dims, and its shadow goes, as it is pressed in */
+.pb-cap, .pb-capshadow { transform-box: fill-box; transform-origin: center; transition: transform .1s ease, opacity .1s ease, filter .1s ease; }
+.pb:active .pb-cap, .pb[aria-checked="true"] .pb-cap { transform: scale(.9); filter: brightness(.88); }
+.pb:active .pb-capshadow, .pb[aria-checked="true"] .pb-capshadow { opacity: .15; transform: scale(.9); }
+
+@media (prefers-reduced-motion: reduce) { .pb-cap, .pb-capshadow { transition: none; } }
