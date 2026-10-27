@@ -17,6 +17,8 @@ sign.setText("other words");                       // change the words; call mea
 sign.paint(ctx, x, y, w, h);                        // the same lettering on a canvas, for anything that redraws the surface (a magnifier)
 ```
 
+`carve: true` cuts it into wood as a real groove instead (a dark floor of fresh wood, a wall in shade on the upper left, a clean lit wall on the lower right, deeper than the etching).
+
 Self-contained: `etched.js` and the font (`Yellowtail-latin.woff2`, a slanted brush script, basic Latin only, Apache Licence 2.0, see `LICENSE-Yellowtail.txt`).
 Optional `swap: { chars: "e", fullName: ["Times New Roman Italic"], style: "italic" }` takes chosen letters from an installed face; off by default.
 Another font: `createEtchedText({ text, fontFamily: "MyFace", fontUrl: "./my-face.woff2" })`. A Marshall-style script, not Marshall's own logo face (a trademark).

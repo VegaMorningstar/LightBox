@@ -274,7 +274,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
   // The sign: lettering inlaid in the bar between the controls (etched-text/), in cream. The glasses draw it too (see updateBar, which hands them its box).
   const SIGN_WORDS = "dude with a pentax";
   let signOn = showSign && signText !== "";                           // "Show text" in the sliders menu; it starts hidden unless `showSign` is set
-  const sign = createEtchedText({ text: signText || SIGN_WORDS, gold: true, lip: "#ffe9a0", shade: "#4a2c05" });
+  const sign = createEtchedText({ text: signText || SIGN_WORDS, carve: true });
   const signEl = sign?.el ?? document.createElement("div");          // an SVG: vector, so it stays sharp at any zoom
   signEl.setAttribute("class", "lb-sign");
   bar.el.append(signEl);

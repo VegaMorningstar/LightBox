@@ -13,7 +13,7 @@
  * edge of every stroke (the cut's wall in shade) and a thin pale lip catches the light along the lower-right edge. Light is from the upper left. The
  * words are one line, always together: the whole lettering scales with the box it is given, it never wraps or breaks.
  *
- * `gold: true` draws it as gold leaf on a wooden sign (a black line round each letter, a shadow on the wood, a sheen), with `shade` the colour of the carved wall.
+ * `carve: true` cuts it into wood as a real groove: a dark floor, a wall in shade on the upper left and a clean lit wall on the lower right (deeper than the etching).
  *
  * The font is Yellowtail, a slanted brush script (Apache Licence 2.0, see LICENSE-Yellowtail.txt), subset to basic Latin. Pass `fontUrl` / `fontFamily`
  * for another. Optional `swap` takes chosen letters from another installed face.
@@ -29,7 +29,7 @@ const FS = 100;                                 // the type size in the drawing'
 const PAD = 8;                                  // room round the ink so the engraving's shading is not clipped
 
 /* `swap` (off by default) lets a few letters come from another installed face, per letter, in the same line: { chars: "e", fullName: ["Times New Roman Italic", "TimesNewRomanPS-ItalicMT"], style: "italic" } */
-export function createEtchedText({ text: initialText = "", fontFamily = "EtchedScript", fontUrl = FONT_URL, weight = "400", swap = null, ink = INK, lip = LIP, shade = SHADE, gold = false } = {}) {
+export function createEtchedText({ text: initialText = "", fontFamily = "EtchedScript", fontUrl = FONT_URL, weight = "400", swap = null, ink = INK, lip = LIP, shade = SHADE, carve = false } = {}) {
   let text = initialText;
   let ready = Promise.resolve();
   const swapFamily = `${fontFamily}-swap`;
@@ -60,28 +60,30 @@ export function createEtchedText({ text: initialText = "", fontFamily = "EtchedS
   el.setAttribute("aria-hidden", "true");
   el.setAttribute("focusable", "false");
   const id = `et-${Math.random().toString(36).slice(2, 7)}`;
-  el.innerHTML = `<defs><filter id="${id}" filterUnits="userSpaceOnUse" x="-20" y="-20" width="2000" height="400" color-interpolation-filters="sRGB">` +
+  const filter = carve
+    // CARVED into wood: a real groove has a floor and two walls. The wall on the upper left is in shade (the light is from the upper left, so it faces away), the wall on the
+    // lower right faces the light and shows the clean, warm, freshly cut wood; a faint catch-light lies on the surface just outside it. The cut is deeper than an etching,
+    // so the walls are wider.
+    ? `<filter id="${id}" filterUnits="userSpaceOnUse" x="-20" y="-20" width="2000" height="400" color-interpolation-filters="sRGB">` +
+      `<feOffset in="SourceAlpha" dx="2.2" dy="2.7" result="s"/><feComposite in="SourceAlpha" in2="s" operator="out" result="sb"/><feGaussianBlur in="sb" stdDeviation=".8" result="ss"/>` +
+      `<feFlood flood-color="#000" flood-opacity=".82"/><feComposite in2="ss" operator="in" result="shadeWall"/>` +
+      `<feOffset in="SourceAlpha" dx="-3.2" dy="-3.9" result="l"/><feComposite in="SourceAlpha" in2="l" operator="out" result="lb"/><feGaussianBlur in="lb" stdDeviation=".7" result="ls"/>` +
+      `<feFlood flood-color="#f2c48a" flood-opacity=".95"/><feComposite in2="ls" operator="in" result="litWall"/>` +
+      `<feOffset in="SourceAlpha" dx="1.6" dy="2" result="o"/><feComposite in="o" in2="SourceAlpha" operator="out" result="ob"/><feGaussianBlur in="ob" stdDeviation=".7" result="os"/>` +
+      `<feFlood flood-color="#ffd9a6" flood-opacity=".4"/><feComposite in2="os" operator="in" result="lipL"/>` +
+      `<feMerge><feMergeNode in="lipL"/><feMergeNode in="SourceGraphic"/><feMergeNode in="litWall"/><feMergeNode in="shadeWall"/></feMerge></filter>`
+    : `<filter id="${id}" filterUnits="userSpaceOnUse" x="-20" y="-20" width="2000" height="400" color-interpolation-filters="sRGB">` +
     // a dark band along the upper-left inside edge of each stroke: the strokes shifted down-right, taken away from the strokes
     `<feOffset in="SourceAlpha" dx="1.5" dy="1.9" result="s"/><feComposite in="SourceAlpha" in2="s" operator="out" result="band"/><feGaussianBlur in="band" stdDeviation="0.5" result="bandSoft"/>` +
     `<feFlood flood-color="${shade}" flood-opacity=".9"/><feComposite in2="bandSoft" operator="in" result="shadow"/><feComposite in="shadow" in2="SourceAlpha" operator="in" result="shadowIn"/>` +
     // a thin light lip just outside the lower-right edge: the strokes shifted down-right, minus the strokes
     `<feOffset in="SourceAlpha" dx="1.8" dy="2.3" result="s2"/><feComposite in="s2" in2="SourceAlpha" operator="out" result="lipBand"/><feGaussianBlur in="lipBand" stdDeviation="0.6" result="lipSoft"/>` +
     `<feFlood flood-color="${lip}" flood-opacity=".95"/><feComposite in2="lipSoft" operator="in" result="lip"/>` +
-    `<feMerge><feMergeNode in="lip"/><feMergeNode in="SourceGraphic"/><feMergeNode in="shadowIn"/></feMerge></filter></defs>` +
-    (gold
-      // GOLD LEAF on a wooden sign: letters laid in gold with a black line cut round each one, a soft shadow on the wood to the lower right, a carved wall in shade on the
-      // upper left inside of each stroke, and the leaf's own sheen (a gold that is lighter at the top and darker at the foot, with a bright diagonal streak)
-      ? `<defs><linearGradient id="${id}-g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fdf0b4"/><stop offset=".38" stop-color="#e8c35c"/><stop offset=".7" stop-color="#c99a34"/><stop offset="1" stop-color="#8f661b"/></linearGradient>` +
-        `<linearGradient id="${id}-s" x1="0" y1="0" x2="1" y2=".35"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset=".42" stop-color="#fff7d0" stop-opacity="0"/><stop offset=".5" stop-color="#fff7d0" stop-opacity=".55"/><stop offset=".58" stop-color="#fff7d0" stop-opacity="0"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>` +
-        `<filter id="${id}-b" x="-5%" y="-20%" width="110%" height="150%"><feGaussianBlur stdDeviation="1.6"/></filter></defs>` +
-        `<g font-size="${FS}" font-weight="${weight}" font-family='${stack.replace(/'/g, "")}' xml:space="preserve">` +
-        `<text class="et-shadow" fill="rgba(0,0,0,.6)" filter="url(#${id}-b)"></text>` +
-        `<text class="et-line" fill="#0a0502" stroke="#0a0502" stroke-width="4.6" stroke-linejoin="round"></text>` +
-        `<g filter="url(#${id})"><text class="et-leaf" fill="url(#${id}-g)"></text></g>` +
-        `<text class="et-sheen" fill="url(#${id}-s)"></text></g>`
-      : `<g filter="url(#${id})"><text fill="${ink}" font-size="${FS}" font-weight="${weight}" font-family='${stack.replace(/'/g, "")}' xml:space="preserve"></text></g>`);
+    `<feMerge><feMergeNode in="lip"/><feMergeNode in="SourceGraphic"/><feMergeNode in="shadowIn"/></feMerge></filter>`;
+  const floor = carve ? "rgba(118, 62, 26, .55)" : ink;                      // a carved letter's floor: the dark of the cut, a little darker than the wood round it
+  el.innerHTML = `<defs>${filter}</defs>` +
+    `<g filter="url(#${id})"><text fill="${floor}" font-size="${FS}" font-weight="${weight}" font-family='${stack.replace(/'/g, "")}' xml:space="preserve"></text></g>`;
   const nodes = [...el.querySelectorAll("text")];
-  const shadowNode = el.querySelector(".et-shadow");
   nodes.forEach((n) => { n.textContent = text; });
 
   /* lay the lettering out in its own units (call after the font is ready; safe to call again) */
@@ -89,8 +91,8 @@ export function createEtchedText({ text: initialText = "", fontFamily = "EtchedS
     const k = extents();
     el.setAttribute("viewBox", `0 0 ${k.W} ${k.H}`);
     for (const n of nodes) {
-      n.setAttribute("x", PAD + k.left + (n === shadowNode ? 2.4 : 0));
-      n.setAttribute("y", k.base + (n === shadowNode ? 3.2 : 0));
+      n.setAttribute("x", PAD + k.left);
+      n.setAttribute("y", k.base);
     }
     return k;
   }
@@ -111,15 +113,9 @@ export function createEtchedText({ text: initialText = "", fontFamily = "EtchedS
     ctx.font = `${weight} ${FS}px ${stack}`;
     ctx.textBaseline = "alphabetic";
     const bx = PAD + k.left, by = k.base;
-    if (gold) {                                                        // gold leaf: shadow on the wood, black line, the gold with its sheen
-      ctx.save(); ctx.filter = "blur(1.6px)"; ctx.fillStyle = "rgba(0,0,0,.6)"; ctx.fillText(text, bx + 2.4, by + 3.2); ctx.restore();
-      ctx.lineJoin = "round"; ctx.lineWidth = 4.6; ctx.strokeStyle = "#0a0502"; ctx.fillStyle = "#0a0502"; ctx.strokeText(text, bx, by); ctx.fillText(text, bx, by);
-      const gg = ctx.createLinearGradient(0, by - k.up, 0, k.H - PAD + 0);
-      gg.addColorStop(0, "#fdf0b4"); gg.addColorStop(.38, "#e8c35c"); gg.addColorStop(.7, "#c99a34"); gg.addColorStop(1, "#8f661b");
-      ctx.fillStyle = gg; ctx.fillText(text, bx, by);
-      const sg = ctx.createLinearGradient(0, 0, k.W, k.H * .35);
-      sg.addColorStop(.42, "rgba(255,247,208,0)"); sg.addColorStop(.5, "rgba(255,247,208,.55)"); sg.addColorStop(.58, "rgba(255,247,208,0)");
-      ctx.fillStyle = sg; ctx.fillText(text, bx, by);
+    if (carve) {                                                        // carved: the floor, then (below) the lit wall and the shaded wall
+      ctx.fillStyle = "rgba(255,217,166,.4)"; ctx.fillText(text, bx + 1.6, by + 2);                      // a catch-light on the surface just outside the lower right
+      ctx.fillStyle = floor; ctx.fillText(text, bx, by);
     } else {
       ctx.fillStyle = lip; ctx.globalAlpha = 0.85; ctx.fillText(text, bx + 1.8, by + 2.3);   // the lip, under
       ctx.globalAlpha = 1; ctx.fillStyle = ink; ctx.fillText(text, bx, by);                   // the cut
@@ -128,9 +124,15 @@ export function createEtchedText({ text: initialText = "", fontFamily = "EtchedS
     ctx.save(); ctx.beginPath(); ctx.rect(0, 0, k.W, k.H); ctx.clip();
     const c = document.createElement("canvas"); c.width = Math.max(1, Math.ceil(k.W * u * 2)); c.height = Math.max(1, Math.ceil(k.H * u * 2));
     const g = c.getContext("2d"); g.scale(u * 2, u * 2); g.font = ctx.font; g.textBaseline = "alphabetic";
-    g.fillStyle = shade; g.fillText(text, bx, by);
-    g.globalCompositeOperation = "destination-out"; g.fillText(text, bx + 1.5, by + 1.9);
-    ctx.globalAlpha = 0.8; ctx.drawImage(c, 0, 0, k.W, k.H);
+    const wall = (col, dx, dy, alpha) => {                              // a band along the inside of the letter: its shape with the same shape moved (dx, dy) taken away
+      g.clearRect(0, 0, k.W, k.H);
+      g.globalCompositeOperation = "source-over"; g.fillStyle = col; g.fillText(text, bx, by);
+      g.globalCompositeOperation = "destination-out"; g.fillText(text, bx + dx, by + dy);
+      g.globalCompositeOperation = "source-over";
+      ctx.globalAlpha = alpha; ctx.drawImage(c, 0, 0, k.W, k.H);
+    };
+    if (carve) { wall("#f2c48a", -3.2, -3.9, 0.95); wall("#000", 2.2, 2.7, 0.82); }     // the lit wall on the lower right, the shaded one on the upper left
+    else wall(shade, 1.5, 1.9, 0.8);
     ctx.restore();
     ctx.restore();
   }
