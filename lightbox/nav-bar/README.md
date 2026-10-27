@@ -13,6 +13,6 @@ bar.place({ x, y, w, h: BAR_H, radii: [tl, tr, br, bl] }, dpr);   // where it li
 paintNavBar(ctx, { x, y, w, h, wood: bar.wood });   // the same bar on a canvas, for a magnifier or anything that redraws the surface
 ```
 
-Anything else can go on the bar (`bar.el.append(...)`, e.g. inlaid lettering). Controls placed on it are restyled for dark wood by `nav-bar.css` (the knob stands on the wood with its shadow to the lower right, a smaller cream scale via `--sb-marks`; the round buttons are dark brass with a little teal patina); the canvas painters in `socket-buttons/` and `press-button/` take `surface: "wood"` for the same look in a magnifier.
+Anything else can go on the bar (`bar.el.append(...)`, e.g. inlaid lettering). Controls placed on it are restyled for dark wood by `nav-bar.css` (the knob stands on the wood with its shadow to the lower right, a smaller cream scale via `--sb-marks`; the round buttons are spun brushed brass); the canvas painters in `socket-buttons/` and `press-button/` take `surface: "wood"` for the same look in a magnifier.
 
 Self-contained: `nav-bar.js` and `nav-bar.css` (it loads its own stylesheet). In LightBox: `lightbox.js` (`mountLightBox` makes it and mounts the controls on it, `layout()` places it, `updateBar` hands it to the glasses, `placeSign` puts the sign on it), `raster.js` (draws it last in both glass views), `sw.js`. Rules: `PHYSICS.md` §10.

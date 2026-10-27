@@ -73,24 +73,19 @@ export function paintSocketButton(ctx, { x, y, size, icon, surface }) {
   disc(.9, 1.1, r - 1, "rgba(10,6,2,.35)");
   // the frosted ivory top
   const top = ctx.createLinearGradient(-r * .7, -r * .7, r * .7, r * .7);
-  if (wood) {                                                                                                            // brass: sectors of sheen like turned metal...
-    if (ctx.createConicGradient) {
-      const cg = ctx.createConicGradient((25 * Math.PI) / 180, 0, 0);
-      [[0, "#b99340"], [.106, "#7a5d22"], [.194, "#cba24b"], [.328, "#6a4f1b"], [.444, "#b58f3c"], [.594, "#5f4617"], [.728, "#c29b45"], [.867, "#6c511d"], [1, "#b99340"]].forEach(([o, col]) => cg.addColorStop(o, col));
-      disc(0, 0, r - 3, cg);
-    } else { top.addColorStop(0, "#a07f34"); top.addColorStop(.55, "#7a5d22"); top.addColorStop(1, "#4f3a14"); disc(0, 0, r - 3, top); }
-  } else { top.addColorStop(0, "#e9e2d2"); top.addColorStop(.6, "#d9d0bc"); top.addColorStop(1, "#c8bda6"); disc(0, 0, r - 3, top); }
-  if (wood) {                                                                                                            // ...with patina in patches that have firm edges
+  if (wood) {                                                                                                            // spun, brushed brass: two bright wedges and two dark ones, fine concentric lines
     const R = r - 3;
+    if (ctx.createConicGradient) {
+      const cg = ctx.createConicGradient(-Math.PI / 2, 0, 0);                                                            // (CSS conic angles start at the top)
+      [[0, "#8a6a26"], [28, "#d7b45a"], [52, "#f2dc92"], [80, "#c9a24a"], [118, "#8f6e28"], [152, "#6b5120"], [178, "#8e6e29"], [208, "#d9b75d"], [232, "#f3de98"], [262, "#cba44c"], [300, "#92722c"], [332, "#6e5322"], [360, "#8a6a26"]]
+        .forEach(([deg, col]) => cg.addColorStop(deg / 360, col));
+      disc(0, 0, R, cg);
+    } else { top.addColorStop(0, "#d7b45a"); top.addColorStop(.5, "#9a7a2e"); top.addColorStop(1, "#6b5120"); disc(0, 0, R, top); }
     ctx.save(); ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2); ctx.clip();
-    const patch = (px, py, pr, col) => { ctx.fillStyle = col; ctx.beginPath(); ctx.arc(px * R, py * R, pr * R, 0, Math.PI * 2); ctx.fill(); };
-    patch(.40, .52, .30, "rgba(78,158,142,.85)"); patch(.48, .32, .16, "rgba(66,146,132,.8)"); patch(-.52, .40, .22, "rgba(70,150,136,.8)");
-    patch(.12, .72, .13, "rgba(84,162,146,.75)"); patch(.24, -.68, .13, "rgba(88,164,148,.7)"); patch(-.68, -.2, .09, "rgba(70,148,134,.7)");
-    // the glints: a bright one on the upper left with a crisp edge, a small one lower right
-    ctx.fillStyle = "rgba(255,244,200,.85)"; ctx.beginPath(); ctx.ellipse(-.4 * R, -.52 * R, .3 * R, .17 * R, -0.5, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = "rgba(255,226,150,.5)"; ctx.beginPath(); ctx.arc(.48 * R, .56 * R, .07 * R, 0, Math.PI * 2); ctx.fill();
+    for (let rr = 0.8; rr < R; rr += 1.25) { ctx.strokeStyle = (Math.round(rr / 1.25) % 2) ? "rgba(255,244,196,.06)" : "rgba(70,48,8,.08)"; ctx.lineWidth = 0.65; ctx.beginPath(); ctx.arc(0, 0, rr, 0, Math.PI * 2); ctx.stroke(); }
     ctx.restore();
   } else {
+    top.addColorStop(0, "#e9e2d2"); top.addColorStop(.6, "#d9d0bc"); top.addColorStop(1, "#c8bda6"); disc(0, 0, r - 3, top);
     const glow = ctx.createRadialGradient(-r * .25, -r * .3, 0, -r * .25, -r * .3, r * .75);
     glow.addColorStop(0, "rgba(255,255,255,.35)"); glow.addColorStop(1, "rgba(255,255,255,0)");
     disc(0, 0, r - 3, glow);
