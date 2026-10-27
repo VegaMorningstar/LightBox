@@ -43,7 +43,10 @@ function plateSvg(id, cls = "", baked = null, wood = false) {
     `<defs>` +
     `<linearGradient id="${id}-plate" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5c8d87"/><stop offset=".5" stop-color="#43736f"/><stop offset="1" stop-color="#2d4f4d"/></linearGradient>` +
     `<linearGradient id="${id}-brass" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f1d98a"/><stop offset=".5" stop-color="#c49b3d"/><stop offset="1" stop-color="#6f5118"/></linearGradient>` +
-    `<radialGradient id="${id}-cream" cx=".36" cy=".3" r=".85"><stop offset="0" stop-color="#fcf6dc"/><stop offset=".55" stop-color="#eadfbd"/><stop offset="1" stop-color="#c9bc94"/></radialGradient>` +
+    `<radialGradient id="${id}-cream" cx=".36" cy=".28" r=".92"><stop offset="0" stop-color="#fffef2"/><stop offset=".38" stop-color="#f3ead0"/><stop offset=".72" stop-color="#d4c79f"/><stop offset="1" stop-color="#a99b73"/></radialGradient>` +
+    `<linearGradient id="${id}-gloss" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".92"/><stop offset=".55" stop-color="#fff" stop-opacity=".34"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>` +
+    `<linearGradient id="${id}-bounce" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff6d6" stop-opacity="0"/><stop offset="1" stop-color="#fff6d6" stop-opacity=".62"/></linearGradient>` +
+    `<clipPath id="${id}-capclip"><circle cx="84" cy="38" r="24"/></clipPath>` +
     `<radialGradient id="${id}-spec" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#fff" stop-opacity=".85"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>` +
     `<radialGradient id="${id}-hole" cx=".6" cy=".62" r=".7"><stop offset="0" stop-color="#2b1e12"/><stop offset="1" stop-color="#080502"/></radialGradient>` +
     `<clipPath id="${id}-clip"><path d="${P}"/></clipPath>` +
@@ -83,7 +86,15 @@ function plateSvg(id, cls = "", baked = null, wood = false) {
     `<circle cx="84" cy="38" r="24" fill="url(#${id}-cream)"/>` +
     `<circle cx="84" cy="38" r="24" fill="none" stroke="rgba(110,92,52,.45)" stroke-width="1"/>` +
     `<circle cx="84" cy="38" r="24" fill="none" stroke="rgba(255,255,255,.6)" stroke-width=".9" transform="translate(-.6 -.8)"/>` +
-    `<ellipse cx="75" cy="28" rx="12" ry="7.5" fill="url(#${id}-spec)" transform="rotate(-24 75 28)"/>` +
+    // a glossy, polished knob: a dark underside with a light bounced back into its lower right rim, a curved window-like reflection across the top with a crisp lower
+    // edge, and a small hard glint
+    `<g clip-path="url(#${id}-capclip)">` +
+    `<circle cx="84" cy="38" r="24" fill="none" stroke="url(#${id}-bounce)" stroke-width="3.2" transform="translate(-.4 -.4)"/>` +
+    `<ellipse cx="84" cy="51" rx="19" ry="9" fill="rgba(70,52,20,.2)" filter="url(#${id}-b1)"/>` +
+    `<path d="M65.5 33.5 Q84 14.5 102.5 33.5 Q84 27 65.5 33.5 Z" fill="url(#${id}-gloss)"/>` +
+    `<ellipse cx="73.5" cy="27.5" rx="6.2" ry="3.3" fill="#fff" opacity=".95" transform="rotate(-30 73.5 27.5)"/>` +
+    `<circle cx="95.5" cy="48.5" r="1.7" fill="#fff" opacity=".7"/>` +
+    `</g>` +
     (baked === "in" ? `<circle cx="84" cy="38" r="25.4" fill="rgba(40,24,6,.13)"/>` : "") +
     `</g>` +
     `</svg>`;

@@ -1,6 +1,6 @@
 # press-button
 
-A latching push button on a weathered plate: a patinated teal-green metal plate with rust showing through, four corner screw holes, two eyelets and two holes, and in the middle a brass-rimmed round recess holding a cream knob with a fluted edge. Press it and the knob goes **in** and stays in (on); press again and it springs **out** (off). Light is from the upper left: the knob out casts a shadow to the lower right; pushed in it is lower, dimmer and the shadow is gone. The plate is set into its surface (a dark gap round it, a lit lip on the lower right, a shaded one on the upper left, a soft shadow to the lower right). It is one SVG, so it stays sharp at any zoom.
+A latching push button on a weathered plate: a patinated teal-green metal plate with rust showing through, four corner screw holes, two eyelets and two holes, and in the middle a brass-rimmed round recess holding a glossy, polished cream knob with a fluted edge. Press it and the knob goes **in** and stays in (on); press again and it springs **out** (off). Light is from the upper left: the knob out casts a shadow to the lower right; pushed in it is lower, dimmer and the shadow is gone. The plate is set into its surface (a dark gap round it, a lit lip on the lower right, a shaded one on the upper left, a soft shadow to the lower right). It is one SVG, so it stays sharp at any zoom.
 
 ```js
 import { createPressButton, paintPressButton } from "./press-button/press-button.js";
