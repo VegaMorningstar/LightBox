@@ -73,10 +73,18 @@ export function paintSocketButton(ctx, { x, y, size, icon, surface }) {
   disc(.9, 1.1, r - 1, "rgba(10,6,2,.35)");
   // the frosted ivory top
   const top = ctx.createLinearGradient(-r * .7, -r * .7, r * .7, r * .7);
-  top.addColorStop(0, "#e9e2d2"); top.addColorStop(.6, "#d9d0bc"); top.addColorStop(1, "#c8bda6");
+  if (wood) { top.addColorStop(0, "#a07f34"); top.addColorStop(.55, "#7a5d22"); top.addColorStop(1, "#4f3a14"); }      // dark brass...
+  else { top.addColorStop(0, "#e9e2d2"); top.addColorStop(.6, "#d9d0bc"); top.addColorStop(1, "#c8bda6"); }
   disc(0, 0, r - 3, top);
+  if (wood) {                                                                                                            // ...with a little teal patina
+    for (const [px, py, pr, a] of [[.44, .52, .5, .62], [-.45, .34, .34, .5], [.2, -.62, .26, .4]]) {
+      const pg = ctx.createRadialGradient(px * (r - 3), py * (r - 3), 0, px * (r - 3), py * (r - 3), pr * (r - 3));
+      pg.addColorStop(0, `rgba(76,154,140,${a})`); pg.addColorStop(1, "rgba(76,154,140,0)");
+      ctx.save(); ctx.beginPath(); ctx.arc(0, 0, r - 3, 0, Math.PI * 2); ctx.clip(); ctx.fillStyle = pg; ctx.fillRect(-r, -r, 2 * r, 2 * r); ctx.restore();
+    }
+  }
   const glow = ctx.createRadialGradient(-r * .25, -r * .3, 0, -r * .25, -r * .3, r * .75);
-  glow.addColorStop(0, "rgba(255,255,255,.35)"); glow.addColorStop(1, "rgba(255,255,255,0)");
+  glow.addColorStop(0, wood ? "rgba(255,228,150,.34)" : "rgba(255,255,255,.35)"); glow.addColorStop(1, wood ? "rgba(255,228,150,0)" : "rgba(255,255,255,0)");
   disc(0, 0, r - 3, glow);
   // the etched icon: a light lip on the lower right, then the dark icon
   const d = ICON_DATA[icon];
@@ -92,8 +100,8 @@ export function paintSocketButton(ctx, { x, y, size, icon, surface }) {
       for (const [cx, cy, rad] of d.circles) { ctx.beginPath(); ctx.arc(cx, cy, rad, 0, Math.PI * 2); ctx.fill(); }
       ctx.restore();
     };
-    draw(.6, .8, "rgba(255,253,246,.9)");
-    draw(0, 0, "#1e1916");
+    draw(.6, .8, wood ? "rgba(255,226,150,.55)" : "rgba(255,253,246,.9)");
+    draw(0, 0, wood ? "#150d05" : "#1e1916");
   }
   ctx.restore();
 }

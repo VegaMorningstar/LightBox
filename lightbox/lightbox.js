@@ -382,12 +382,12 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     const right = Math.min(...rights.map((b) => b.getBoundingClientRect().left)) - o.left - 20;
     const { aspect, midY } = sign.measure();                               // the lettering's box, width over height, and where the middle of its small letters is
     // centred on the screen (the bar's middle), not on the gap, so the room it has is twice the smaller distance from the middle to the left controls or the right ones
-    const cx = o.width / 2, room = 2 * Math.min(cx - left, right - cx);
+    const cx = (o.width - bar.thickness) / 2, room = 2 * Math.min(cx - left, right - cx);
     if (room < 60) return;
     // the words stay together on one line: the whole lettering gets smaller to fit, it never wraps
     const h = Math.min(46, 0.8 * room / aspect), w = h * aspect;
     // the middle of the small letters on the bar's middle line, level with the controls
-    const top = o.height / 2 - midY * h;
+    const top = (o.height - bar.thickness) / 2 - midY * h;
     Object.assign(signEl.style, { display: "block", left: `${cx - w / 2}px`, top: `${top}px`, width: `${w}px`, height: `${h}px` });
     signBox = { x: barBox.x + cx, y: barBox.y + top + h / 2, w, h };       // (in stage px, for the glasses)
   }
@@ -405,7 +405,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
       const cx = r.left - origin.left + r.width / 2, cy = r.top - origin.top + r.height / 2;
       shown.push(b.dataset.icon === "press"
         ? { x: cx, y: cy, size: r.height, icon: "press", w: r.width, h: r.height, on: b.getAttribute("aria-checked") === "true", surface: "wood" }      // the light button is a rectangle, the rest are round
-        : { x: cx, y: cy, size: r.width, icon: b.dataset.icon, angle: +(b.dataset.angle ?? 0), surface: "wood" });
+        : { x: cx, y: cy, size: r.width, icon: b.dataset.icon, angle: +(b.dataset.angle ?? 0), surface: "wood", marks: b.dataset.icon === "knob" ? 1.42 : undefined });
     }
     if (signBox) shown.push({ x: signBox.x, y: signBox.y, size: signBox.h, icon: "sign", w: signBox.w, h: signBox.h, paint: (ctx, x, y, w, h) => sign.paint(ctx, x, y, w, h) });
     sceneRef.bar = { ...barBox, wood: bar.wood };
@@ -606,8 +606,10 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     edgeSize = { m: edgeM, f: edgeF, blur: Math.max(5, Math.min(11, innerWidth * 0.009)) };
     const pad = Math.round(edgeM + edgeF + 8);
     stage.style.setProperty("--pad", `${pad}px`);
-    // the bar rests across the top of the panel, inside the dark margin; the film starts below it
-    barBox = { x: Math.round(edgeM + 12), y: Math.round(edgeM + 10), w: Math.max(200, Math.round(stage.clientWidth - 2 * (edgeM + 12))), h: BAR_H };
+    // the bar rests across the top of the light box, flush with the top edge of its lit panel and as wide as the panel, its top corners following the panel's own
+    // rounded corners (radius edgeF * 0.9, as in the glow clip); the film starts below it
+    const panelR = Math.round(edgeF * 0.9);
+    barBox = { x: Math.round(edgeM), y: Math.round(edgeM), w: Math.max(200, Math.round(stage.clientWidth - 2 * edgeM)), h: BAR_H, radii: [panelR, panelR, 6, 6] };
     bar.place(barBox, Math.min(2, window.devicePixelRatio || 1));
     stage.style.setProperty("--pad-top", `${Math.max(pad + 80, barBox.y + BAR_H + 36)}px`);       // room above the film for the bar
     const inner = stage.clientWidth - pad * 2;

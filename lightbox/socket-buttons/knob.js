@@ -140,14 +140,14 @@ export function createSocketKnob({ label = "", min = 0, max = 1, value = 0.5, ho
 
 /* Draw a knob onto a canvas as it looks on the page, for anything that redraws the surface itself (a magnifier over it, say).
    ctx: a 2D context, one unit = one css px. x, y: its centre. size: its diameter. angle: its turn in degrees. */
-export function paintSocketKnob(ctx, { x, y, size, angle = 0, surface }) {
+export function paintSocketKnob(ctx, { x, y, size, angle = 0, surface, marks = 1.46 }) {
   const wood = surface === "wood";                                  // set in dark wood (a nav bar): cream inlaid scale, dark gap, faint warm lip
   const r = size / 2;
   const disc = (cx, cy, rad, fill) => { ctx.beginPath(); ctx.arc(cx, cy, rad, 0, Math.PI * 2); ctx.fillStyle = fill; ctx.fill(); };
   ctx.save();
   ctx.translate(x, y);
   // the scale engraved round it, and the − and + at its ends: a dark groove with a light lip on its lower-right edge (as on the page)
-  const u = (size * 1.46) / 100;                                  // one unit of the page's scale drawing, in px
+  const u = (size * marks) / 100;                                 // one unit of the page's scale drawing, in px (the scale is `marks` times the knob across)
   const groove = (dx, dy, colour) => {
     ctx.save();
     ctx.translate(dx, dy);
@@ -173,12 +173,15 @@ export function paintSocketKnob(ctx, { x, y, size, angle = 0, surface }) {
   groove(0, 0, wood ? "rgba(238,222,178,.94)" : "rgba(46,34,20,.85)");
   // the knob stands proud of the surface: it casts a shadow toward the lower right
   ctx.save();
-  ctx.shadowColor = wood ? "rgba(0,0,0,.55)" : "rgba(40,24,8,.4)"; ctx.shadowBlur = 9; ctx.shadowOffsetX = 4; ctx.shadowOffsetY = 6;
+  if (wood) { ctx.shadowColor = "rgba(0,0,0,.62)"; ctx.shadowBlur = 7; ctx.shadowOffsetX = 4; ctx.shadowOffsetY = 5; }
+  else { ctx.shadowColor = "rgba(40,24,8,.4)"; ctx.shadowBlur = 9; ctx.shadowOffsetX = 4; ctx.shadowOffsetY = 6; }
   disc(0, 0, r, "#1c150e");
   ctx.restore();
-  disc(1.2, 1.8, r + 2.9, wood ? "rgba(255,214,160,.22)" : "rgba(255,252,240,.85)");
-  disc(-.8, -1, r + 2.9, wood ? "rgba(0,0,0,.35)" : "rgba(70,48,26,.3)");
-  disc(0, 0, r + 2, wood ? "rgba(6,2,0,.7)" : "rgba(58,40,22,.5)");
+  if (!wood) {                                                    // on a panel the knob sits in a socket; on wood it just stands there, with its shadow to the lower right
+    disc(1.2, 1.8, r + 2.9, "rgba(255,252,240,.85)");
+    disc(-.8, -1, r + 2.9, "rgba(70,48,26,.3)");
+    disc(0, 0, r + 2, "rgba(58,40,22,.5)");
+  }
   // the knurled rim: it turns
   ctx.save();
   ctx.rotate((angle * Math.PI) / 180);
