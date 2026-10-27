@@ -233,7 +233,7 @@ function buildControls(rows, { onOrganize, onButton, sliders = true, volume = nu
   return { wrap: nav, corner: [...(sliders ? [toggle] : []), organize], left: [...(knob ? [knob.el] : []), ...(light ? [light.el] : [])], lightSwitch: light, setters };
 }
 
-export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFade = 0.85, volumes = {}, outerGlass = {}, filmDrag = 1, filmFlutter = 1, stacking = 1, panelFalloff = 1.25, panelGlow = 1, panelGrain = 1, lightBleed = 1, lightSeep = 1.6, seepSpread = 10, signText = "dude with a pentax", showSign = false, startScreen = true, startLength = 1600, size, controls = true, sliders = true } = {}) {
+export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFade = 0.85, volumes = {}, outerGlass = {}, filmDrag = 1, filmFlutter = 1, stacking = 1, panelFalloff = 1.25, panelGlow = 1, panelGrain = 1, lightBleed = 1, lightSeep = 1.6, seepSpread = 10, signText = "dude with a pentax", showSign = true, startScreen = true, startLength = 1600, size, controls = true, sliders = true } = {}) {
   root.classList.add("lb-root");
   const stage = div("lb-stage");
   root.replaceChildren(stage);
@@ -274,7 +274,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
   // The sign: lettering inlaid in the bar between the controls (etched-text/), in cream. The glasses draw it too (see updateBar, which hands them its box).
   const SIGN_WORDS = "dude with a pentax";
   let signOn = showSign && signText !== "";                           // "Show text" in the sliders menu; it starts hidden unless `showSign` is set
-  const sign = createEtchedText({ text: signText || SIGN_WORDS, ink: "rgba(238, 222, 178, .94)", lip: "#120600", shade: "#8a7448" });
+  const sign = createEtchedText({ text: signText || SIGN_WORDS, gold: true, lip: "#ffe9a0", shade: "#4a2c05" });
   const signEl = sign?.el ?? document.createElement("div");          // an SVG: vector, so it stays sharp at any zoom
   signEl.setAttribute("class", "lb-sign");
   bar.el.append(signEl);
@@ -836,12 +836,13 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
   const samples = [];                  // recent eyepiece positions, to measure the throw
   const follow = () => {
     const p = pointerInStage(lastPointer.x, lastPointer.y);
-    goal.x = p.x - grab.x; goal.y = p.y - grab.y;
+    const wantX = p.x - grab.x, wantY = p.y - grab.y;                  // where the hand says the eyepiece should be (it may be past a wall)
+    goal.x = wantX; goal.y = wantY;
     const intoBar = lift < BAR_CLEAR && goal.y < barLimit();         // the hand is pushing the eyepiece into the bar
     clamp(); kick();
     if (intoBar) barHit(Math.max(0, -eyeV.y));
     const now = performance.now();
-    samples.push({ t: now, x: goal.x, y: goal.y });
+    samples.push({ t: now, x: wantX, y: wantY });                      // the throw is measured from where the hand wants it, not where a wall let it get to, so a throw that is let go while pushed against the bar or an edge still has its speed and bounces
     while (samples.length > 1 && now - samples[0].t > 100) samples.shift();
   };
   /* speed over the last ~100 ms; zero if the pointer had already stopped before release */

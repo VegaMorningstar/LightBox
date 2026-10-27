@@ -13,6 +13,8 @@
  * edge of every stroke (the cut's wall in shade) and a thin pale lip catches the light along the lower-right edge. Light is from the upper left. The
  * words are one line, always together: the whole lettering scales with the box it is given, it never wraps or breaks.
  *
+ * `gold: true` draws it as gold leaf on a wooden sign (a black line round each letter, a shadow on the wood, a sheen), with `shade` the colour of the carved wall.
+ *
  * The font is Yellowtail, a slanted brush script (Apache Licence 2.0, see LICENSE-Yellowtail.txt), subset to basic Latin. Pass `fontUrl` / `fontFamily`
  * for another. Optional `swap` takes chosen letters from another installed face.
  */
@@ -27,7 +29,7 @@ const FS = 100;                                 // the type size in the drawing'
 const PAD = 8;                                  // room round the ink so the engraving's shading is not clipped
 
 /* `swap` (off by default) lets a few letters come from another installed face, per letter, in the same line: { chars: "e", fullName: ["Times New Roman Italic", "TimesNewRomanPS-ItalicMT"], style: "italic" } */
-export function createEtchedText({ text: initialText = "", fontFamily = "EtchedScript", fontUrl = FONT_URL, weight = "400", swap = null, ink = INK, lip = LIP, shade = SHADE } = {}) {
+export function createEtchedText({ text: initialText = "", fontFamily = "EtchedScript", fontUrl = FONT_URL, weight = "400", swap = null, ink = INK, lip = LIP, shade = SHADE, gold = false } = {}) {
   let text = initialText;
   let ready = Promise.resolve();
   const swapFamily = `${fontFamily}-swap`;
@@ -66,16 +68,30 @@ export function createEtchedText({ text: initialText = "", fontFamily = "EtchedS
     `<feOffset in="SourceAlpha" dx="1.8" dy="2.3" result="s2"/><feComposite in="s2" in2="SourceAlpha" operator="out" result="lipBand"/><feGaussianBlur in="lipBand" stdDeviation="0.6" result="lipSoft"/>` +
     `<feFlood flood-color="${lip}" flood-opacity=".95"/><feComposite in2="lipSoft" operator="in" result="lip"/>` +
     `<feMerge><feMergeNode in="lip"/><feMergeNode in="SourceGraphic"/><feMergeNode in="shadowIn"/></feMerge></filter></defs>` +
-    `<g filter="url(#${id})"><text fill="${ink}" font-size="${FS}" font-weight="${weight}" font-family='${stack.replace(/'/g, "")}' xml:space="preserve"></text></g>`;
-  const node = el.querySelector("text");
-  node.textContent = text;
+    (gold
+      // GOLD LEAF on a wooden sign: letters laid in gold with a black line cut round each one, a soft shadow on the wood to the lower right, a carved wall in shade on the
+      // upper left inside of each stroke, and the leaf's own sheen (a gold that is lighter at the top and darker at the foot, with a bright diagonal streak)
+      ? `<defs><linearGradient id="${id}-g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fdf0b4"/><stop offset=".38" stop-color="#e8c35c"/><stop offset=".7" stop-color="#c99a34"/><stop offset="1" stop-color="#8f661b"/></linearGradient>` +
+        `<linearGradient id="${id}-s" x1="0" y1="0" x2="1" y2=".35"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset=".42" stop-color="#fff7d0" stop-opacity="0"/><stop offset=".5" stop-color="#fff7d0" stop-opacity=".55"/><stop offset=".58" stop-color="#fff7d0" stop-opacity="0"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>` +
+        `<filter id="${id}-b" x="-5%" y="-20%" width="110%" height="150%"><feGaussianBlur stdDeviation="1.6"/></filter></defs>` +
+        `<g font-size="${FS}" font-weight="${weight}" font-family='${stack.replace(/'/g, "")}' xml:space="preserve">` +
+        `<text class="et-shadow" fill="rgba(0,0,0,.6)" filter="url(#${id}-b)"></text>` +
+        `<text class="et-line" fill="#0a0502" stroke="#0a0502" stroke-width="4.6" stroke-linejoin="round"></text>` +
+        `<g filter="url(#${id})"><text class="et-leaf" fill="url(#${id}-g)"></text></g>` +
+        `<text class="et-sheen" fill="url(#${id}-s)"></text></g>`
+      : `<g filter="url(#${id})"><text fill="${ink}" font-size="${FS}" font-weight="${weight}" font-family='${stack.replace(/'/g, "")}' xml:space="preserve"></text></g>`);
+  const nodes = [...el.querySelectorAll("text")];
+  const shadowNode = el.querySelector(".et-shadow");
+  nodes.forEach((n) => { n.textContent = text; });
 
   /* lay the lettering out in its own units (call after the font is ready; safe to call again) */
   function layout() {
     const k = extents();
     el.setAttribute("viewBox", `0 0 ${k.W} ${k.H}`);
-    node.setAttribute("x", PAD + k.left);
-    node.setAttribute("y", k.base);
+    for (const n of nodes) {
+      n.setAttribute("x", PAD + k.left + (n === shadowNode ? 2.4 : 0));
+      n.setAttribute("y", k.base + (n === shadowNode ? 3.2 : 0));
+    }
     return k;
   }
   layout();
@@ -95,8 +111,19 @@ export function createEtchedText({ text: initialText = "", fontFamily = "EtchedS
     ctx.font = `${weight} ${FS}px ${stack}`;
     ctx.textBaseline = "alphabetic";
     const bx = PAD + k.left, by = k.base;
-    ctx.fillStyle = lip; ctx.globalAlpha = 0.85; ctx.fillText(text, bx + 1.8, by + 2.3);   // the lip, under
-    ctx.globalAlpha = 1; ctx.fillStyle = ink; ctx.fillText(text, bx, by);                   // the cut
+    if (gold) {                                                        // gold leaf: shadow on the wood, black line, the gold with its sheen
+      ctx.save(); ctx.filter = "blur(1.6px)"; ctx.fillStyle = "rgba(0,0,0,.6)"; ctx.fillText(text, bx + 2.4, by + 3.2); ctx.restore();
+      ctx.lineJoin = "round"; ctx.lineWidth = 4.6; ctx.strokeStyle = "#0a0502"; ctx.fillStyle = "#0a0502"; ctx.strokeText(text, bx, by); ctx.fillText(text, bx, by);
+      const gg = ctx.createLinearGradient(0, by - k.up, 0, k.H - PAD + 0);
+      gg.addColorStop(0, "#fdf0b4"); gg.addColorStop(.38, "#e8c35c"); gg.addColorStop(.7, "#c99a34"); gg.addColorStop(1, "#8f661b");
+      ctx.fillStyle = gg; ctx.fillText(text, bx, by);
+      const sg = ctx.createLinearGradient(0, 0, k.W, k.H * .35);
+      sg.addColorStop(.42, "rgba(255,247,208,0)"); sg.addColorStop(.5, "rgba(255,247,208,.55)"); sg.addColorStop(.58, "rgba(255,247,208,0)");
+      ctx.fillStyle = sg; ctx.fillText(text, bx, by);
+    } else {
+      ctx.fillStyle = lip; ctx.globalAlpha = 0.85; ctx.fillText(text, bx + 1.8, by + 2.3);   // the lip, under
+      ctx.globalAlpha = 1; ctx.fillStyle = ink; ctx.fillText(text, bx, by);                   // the cut
+    }
     // the shaded wall: the cut's own shape with its lower-right part taken away, drawn over the cut
     ctx.save(); ctx.beginPath(); ctx.rect(0, 0, k.W, k.H); ctx.clip();
     const c = document.createElement("canvas"); c.width = Math.max(1, Math.ceil(k.W * u * 2)); c.height = Math.max(1, Math.ceil(k.H * u * 2));
@@ -109,7 +136,7 @@ export function createEtchedText({ text: initialText = "", fontFamily = "EtchedS
   }
 
   /* change the words (the box is re-measured; ask measure() again afterwards) */
-  function setText(t) { text = String(t); node.textContent = text; layout(); }
+  function setText(t) { text = String(t); nodes.forEach((n) => { n.textContent = text; }); layout(); }
 
   return { el, ready, measure, paint, setText, get text() { return text; } };
 }
