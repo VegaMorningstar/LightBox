@@ -65,12 +65,12 @@ export function createEtchedText({ text: initialText = "", fontFamily = "EtchedS
     // lower right faces the light and shows the clean, warm, freshly cut wood; a faint catch-light lies on the surface just outside it. The cut is deeper than an etching,
     // so the walls are wider.
     ? `<filter id="${id}" filterUnits="userSpaceOnUse" x="-20" y="-20" width="2000" height="400" color-interpolation-filters="sRGB">` +
-      `<feOffset in="SourceAlpha" dx="2.2" dy="2.7" result="s"/><feComposite in="SourceAlpha" in2="s" operator="out" result="sb"/><feGaussianBlur in="sb" stdDeviation=".8" result="ss"/>` +
-      `<feFlood flood-color="#000" flood-opacity=".82"/><feComposite in2="ss" operator="in" result="shadeWall"/>` +
-      `<feOffset in="SourceAlpha" dx="-3.2" dy="-3.9" result="l"/><feComposite in="SourceAlpha" in2="l" operator="out" result="lb"/><feGaussianBlur in="lb" stdDeviation=".7" result="ls"/>` +
-      `<feFlood flood-color="#f2c48a" flood-opacity=".95"/><feComposite in2="ls" operator="in" result="litWall"/>` +
+      `<feOffset in="SourceAlpha" dx="2.7" dy="3.3" result="s"/><feComposite in="SourceAlpha" in2="s" operator="out" result="sb"/><feGaussianBlur in="sb" stdDeviation=".8" result="ss"/>` +
+      `<feFlood flood-color="#000" flood-opacity=".97"/><feComposite in2="ss" operator="in" result="shadeWall"/>` +
+      `<feOffset in="SourceAlpha" dx="-2.5" dy="-3" result="l"/><feComposite in="SourceAlpha" in2="l" operator="out" result="lb"/><feGaussianBlur in="lb" stdDeviation=".7" result="ls"/>` +
+      `<feFlood flood-color="#ffdca6" flood-opacity="1"/><feComposite in2="ls" operator="in" result="litWall"/>` +
       `<feOffset in="SourceAlpha" dx="1.6" dy="2" result="o"/><feComposite in="o" in2="SourceAlpha" operator="out" result="ob"/><feGaussianBlur in="ob" stdDeviation=".7" result="os"/>` +
-      `<feFlood flood-color="#ffd9a6" flood-opacity=".4"/><feComposite in2="os" operator="in" result="lipL"/>` +
+      `<feFlood flood-color="#ffe2b4" flood-opacity=".62"/><feComposite in2="os" operator="in" result="lipL"/>` +
       `<feMerge><feMergeNode in="lipL"/><feMergeNode in="SourceGraphic"/><feMergeNode in="litWall"/><feMergeNode in="shadeWall"/></feMerge></filter>`
     : `<filter id="${id}" filterUnits="userSpaceOnUse" x="-20" y="-20" width="2000" height="400" color-interpolation-filters="sRGB">` +
     // a dark band along the upper-left inside edge of each stroke: the strokes shifted down-right, taken away from the strokes
@@ -80,7 +80,7 @@ export function createEtchedText({ text: initialText = "", fontFamily = "EtchedS
     `<feOffset in="SourceAlpha" dx="1.8" dy="2.3" result="s2"/><feComposite in="s2" in2="SourceAlpha" operator="out" result="lipBand"/><feGaussianBlur in="lipBand" stdDeviation="0.6" result="lipSoft"/>` +
     `<feFlood flood-color="${lip}" flood-opacity=".95"/><feComposite in2="lipSoft" operator="in" result="lip"/>` +
     `<feMerge><feMergeNode in="lip"/><feMergeNode in="SourceGraphic"/><feMergeNode in="shadowIn"/></feMerge></filter>`;
-  const floor = carve ? "rgba(118, 62, 26, .55)" : ink;                      // a carved letter's floor: the dark of the cut, a little darker than the wood round it
+  const floor = carve ? "rgba(42, 17, 6, .8)" : ink;                      // a carved letter's floor: the dark of the cut, a little darker than the wood round it
   el.innerHTML = `<defs>${filter}</defs>` +
     `<g filter="url(#${id})"><text fill="${floor}" font-size="${FS}" font-weight="${weight}" font-family='${stack.replace(/'/g, "")}' xml:space="preserve"></text></g>`;
   const nodes = [...el.querySelectorAll("text")];
@@ -114,7 +114,7 @@ export function createEtchedText({ text: initialText = "", fontFamily = "EtchedS
     ctx.textBaseline = "alphabetic";
     const bx = PAD + k.left, by = k.base;
     if (carve) {                                                        // carved: the floor, then (below) the lit wall and the shaded wall
-      ctx.fillStyle = "rgba(255,217,166,.4)"; ctx.fillText(text, bx + 1.6, by + 2);                      // a catch-light on the surface just outside the lower right
+      ctx.fillStyle = "rgba(255,226,180,.62)"; ctx.fillText(text, bx + 1.6, by + 2);                      // a catch-light on the surface just outside the lower right
       ctx.fillStyle = floor; ctx.fillText(text, bx, by);
     } else {
       ctx.fillStyle = lip; ctx.globalAlpha = 0.85; ctx.fillText(text, bx + 1.8, by + 2.3);   // the lip, under
@@ -131,7 +131,7 @@ export function createEtchedText({ text: initialText = "", fontFamily = "EtchedS
       g.globalCompositeOperation = "source-over";
       ctx.globalAlpha = alpha; ctx.drawImage(c, 0, 0, k.W, k.H);
     };
-    if (carve) { wall("#f2c48a", -3.2, -3.9, 0.95); wall("#000", 2.2, 2.7, 0.82); }     // the lit wall on the lower right, the shaded one on the upper left
+    if (carve) { wall("#ffdca6", -2.5, -3, 1); wall("#000", 2.7, 3.3, 0.97); }     // the lit wall on the lower right, the shaded one on the upper left
     else wall(shade, 1.5, 1.9, 0.8);
     ctx.restore();
     ctx.restore();
