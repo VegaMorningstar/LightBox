@@ -844,6 +844,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
   // drag
   const grab = { x: 0, y: 0 };
   const lastPointer = { x: 0, y: 0 };
+  const hand = { y: null };            // where the hand wants the eyepiece's centre (stage px), even where a wall (the bar) will not let it go: edge scrolling follows the hand
   const pointerInStage = (x, y) => {
     const b = stage.getBoundingClientRect();
     return { x: x - b.left, y: y - b.top };
@@ -852,6 +853,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
   const follow = () => {
     const p = pointerInStage(lastPointer.x, lastPointer.y);
     const wantX = p.x - grab.x, wantY = p.y - grab.y;                  // where the hand says the eyepiece should be (it may be past a wall)
+    hand.y = wantY;
     goal.x = wantX; goal.y = wantY;
     clamp(); kick();
     const now = performance.now();
@@ -882,7 +884,9 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     edgeLast = t;
     const R = D / 2;
     const topEdge = 0;
-    const y = goal.y + stage.getBoundingClientRect().top;                 // where the eyepiece is headed, in the window
+    // where the eyepiece is headed, in the window: where the HAND wants it, so that pushing it against the wooden bar still counts as pushing it at the top of the window
+    // (the bar stops the eyepiece, so its goal alone would stop the page scrolling up as soon as the eyepiece met the bar, well short of the top of the page)
+    const y = (hand.y ?? goal.y) + stage.getBoundingClientRect().top;
     const intoTop = topEdge - (y - R);                                    // > 0 once the ring reaches the top edge
     const intoBottom = y + R - innerHeight;                               // > 0 once it reaches the bottom edge
     const maxY = document.documentElement.scrollHeight - innerHeight;
@@ -910,6 +914,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     loupe.el.setPointerCapture(e.pointerId);
     lastPointer.x = e.clientX; lastPointer.y = e.clientY;
     sounds.unlock();                           // browsers only start audio from a gesture
+    hand.y = null;
     coasting = false; vel.x = vel.y = 0;       // grabbing it stops a slide
     goal.x = cur.x; goal.y = cur.y;            // hold it where it visibly is, not where it was heading
     const p = pointerInStage(e.clientX, e.clientY);
