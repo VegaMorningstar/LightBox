@@ -1,5 +1,6 @@
 /* The start-up sound: ONE mechanical switch-on, like a film camera's shutter snap: a bright "ka" and a lower "clack" over the thud of the switch going over.
- * It sounds at the moment the switch is thrown (the start of the timeline, timeline.js), as the light flickers once and then strikes.
+ * It sounds at the moment the switch is thrown, the same instant the light flashes (the start of the timeline, timeline.js), with a very soft, brief
+ * crackle of electronics as the light flashes.
  *
  * It is built from the audio parts sounds.js owns, handed over once as `audio`:
  *   vols            the volume settings (vols.strobe is this sound's level; 0 is silent)
@@ -34,6 +35,12 @@ export function createStrobeSound(audio) {
       // under both, the heavy thud of the switch going over
       tone(t, { type: "sine", from: 130 * jitter(0.03), to: 48, peak: 0.65, decay: 0.17, sweep: 0.1 }, master);
       noiseBurst(t, { type: "lowpass", freq: 420, q: 0.7, peak: 0.5, decay: 0.06, attack: 0.001 }, master);
+      // a small electronic crackle as the light flashes: a few tiny, bright, uneven pops, very soft and over in about a quarter of a second, thinning out
+      for (let i = 0; i < 9; i++) {
+        const at = t + 0.012 + i * 0.026 + Math.random() * 0.018, fade = 1 - i / 11;
+        noiseBurst(at, { type: "bandpass", freq: 4200 + Math.random() * 3200, q: 1.2, peak: (0.045 + 0.06 * Math.random()) * fade, decay: 0.004 + Math.random() * 0.007, attack: 0.0004 }, master);
+        if (i % 2 === 0) tone(at, { type: "sine", from: 6200 + Math.random() * 1500, to: 3400, peak: 0.012 * fade, decay: 0.012, sweep: 0.008 }, master);
+      }
       return true;
     },
   };

@@ -1,5 +1,5 @@
 /* start-screen: the page opens on the light box with its light OFF, waits until everything on it is fully drawn, then the light comes on the way a
- * tube does: one weak flicker, then it strikes, over-brightens (the light spills past the film) and settles to the normal state. A sound can play
+ * tube does: the switch goes over and it flashes at once, over-brightens (the light spills past the film) and settles to the normal state. A sound can play
  * with it. The over-bright light passes only through what is see-through (the board, the pictures); the opaque parts stay dark. It takes about 1.6 s, and then the page is exactly as it always was: both layers are removed.
  *
  *   import { createStartScreen } from "./start-screen/start-screen.js";
@@ -15,7 +15,7 @@
  *   start.replay();                   // dark again, then light up (no waiting for ready)
  *   start.length = 2000; start.enabled = false;
  *
- * Under "reduce motion" there is no flicker, no flash and no sound: the light just fades up over about half a second.
+ * Under "reduce motion" there is no flash and no sound: the light just fades up over about half a second.
  * The shape of the run is in timeline.js; the sound's in sound.js; the rules are in PHYSICS.md.
  */
 
