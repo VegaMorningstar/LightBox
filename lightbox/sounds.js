@@ -12,6 +12,8 @@
  * surface. The audio context is created on the first user gesture, as browsers require.
  */
 
+import { createStrobeSound } from "./start-screen/sound.js";
+
 /* how loud the ordinary dial ticks are, against the notch and lock sounds (1 = as loud as the notch's click) */
 const SUBCLICK = 0.34;
 
@@ -23,7 +25,7 @@ export const GLASS_DRAG_ENABLED = false;
 const grainWindow = Float32Array.from({ length: 48 }, (_, i) => 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / 47) );
 
 /* The level of every sound, 0 to 1 (the page has a slider for each). A sound's own level sits under the master. */
-export const DEFAULT_VOLUMES = { master: 1, tick: 0.3, notch: 0.6, lift: 0.6, place: 0.15, thump: 0.6, button: 0.6, drag: 0.3, slide: 0.01, crackle: 1 };
+export const DEFAULT_VOLUMES = { master: 1, tick: 0.3, notch: 0.6, lift: 0.6, place: 0.15, thump: 0.6, button: 0.6, drag: 0.3, slide: 0.01, crackle: 1, strobe: 0.6 };
 
 export function createSounds({ volumes = {} } = {}) {
   const vols = { ...DEFAULT_VOLUMES, ...volumes };
@@ -33,6 +35,7 @@ export function createSounds({ volumes = {} } = {}) {
   let slideMaster = null;
   let noise = null;
   let crackleMaster = null;
+  let strobeMaster = null;   // the start-up strobe (start-screen/sound.js)
   let dragBus = null;      // speed-following level of the glass drag
   let dragMaster = null;   // its volume setting
   let dragNext = 0;        // when the next copy of the drag clip should start
@@ -90,6 +93,9 @@ export function createSounds({ volumes = {} } = {}) {
       crackleMaster = ctx.createGain();
       crackleMaster.gain.value = vols.crackle;
       crackleMaster.connect(limiter);
+      strobeMaster = ctx.createGain();
+      strobeMaster.gain.value = vols.strobe;
+      strobeMaster.connect(limiter);
       dragMaster = ctx.createGain();
       dragMaster.gain.value = vols.drag;
       dragMaster.connect(limiter);
@@ -179,6 +185,9 @@ export function createSounds({ volumes = {} } = {}) {
     osc.stop(t + decay + 0.02);
   }
 
+  // the start-up strobe's sound is its own file (start-screen/sound.js); it borrows these parts
+  const strobe = createStrobeSound({ vols, ensure, ctx: () => ctx, noise: () => noise, strobeMaster: () => strobeMaster, jitter, envelope, noiseBurst, tone });
+
   function clickAt(t, strength, dest) {
     noiseBurst(t, { freq: 3000 * jitter(0.12), q: 0.9, peak: 0.85 * strength, decay: 0.011 }, dest);
     tone(t, { type: "triangle", from: 2300 * jitter(0.06), to: 1700, peak: 0.16 * strength, decay: 0.007, sweep: 0.006 }, dest);
@@ -186,12 +195,14 @@ export function createSounds({ volumes = {} } = {}) {
   }
 
   return {
+    /* the start-up strobe (start-screen/sound.js): resolves true if it is playing, false if the browser held audio back */
+    strobe: (scale) => strobe.play(scale),
     /* call from a user gesture so the browser lets audio start */
     unlock() { ensure(); },
     /* change one sound's level (or the master) while it is playing */
     setVolume(name, v) {
       vols[name] = v;
-      const node = name === "master" ? out : name === "slide" ? slideMaster : name === "crackle" ? crackleMaster : name === "drag" ? dragMaster : bus[name];
+      const node = name === "master" ? out : name === "slide" ? slideMaster : name === "crackle" ? crackleMaster : name === "strobe" ? strobeMaster : name === "drag" ? dragMaster : bus[name];
       if (node) node.gain.value = v;
     },
     /* The glass edge being dragged across the board (from your recording, so only where the clip is loaded). `level`

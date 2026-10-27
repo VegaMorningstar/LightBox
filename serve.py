@@ -12,7 +12,10 @@ class NoCache(http.server.SimpleHTTPRequestHandler):
         super().end_headers()
 
 
-socketserver.TCPServer.allow_reuse_address = True
-with socketserver.TCPServer(("", PORT), NoCache) as srv:
+# threaded, with a long queue: a page made of many small module files asks for them all at once, and a one-at-a-time server drops some of them
+socketserver.ThreadingTCPServer.allow_reuse_address = True
+socketserver.ThreadingTCPServer.daemon_threads = True
+socketserver.ThreadingTCPServer.request_queue_size = 128
+with socketserver.ThreadingTCPServer(("", PORT), NoCache) as srv:
     print(f"http://localhost:{PORT}")
     srv.serve_forever()

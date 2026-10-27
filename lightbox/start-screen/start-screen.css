@@ -1,0 +1,4 @@
+/* The start screen: two layers over the whole light box (see start-screen.js). Theme with --ss-dark (the colour of the unlit room). */
+.ss-dark, .ss-bloom { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 4; }   /* above the eyepiece, below the sliders panel */
+.ss-dark { background: var(--ss-dark, #0a0705); }
+.ss-bloom { }   /* no picture of its own: it only brightens what lies under it (start-screen.js shows it and sets its backdrop-filter while the light is over-bright) */

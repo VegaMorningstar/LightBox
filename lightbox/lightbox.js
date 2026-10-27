@@ -15,6 +15,7 @@ import { createBleed, paintHoles } from "./bleed.js";
 import { createSocketButton, mountSocketCorner, setCovered, setPressed, ICONS } from "./socket-buttons/buttons.js";
 import { createSocketKnob } from "./socket-buttons/knob.js";
 import { createEtchedText } from "./etched-text/etched.js";
+import { createStartScreen } from "./start-screen/start-screen.js";
 import { createSpecks } from "./dust.js";
 import { createFilm } from "./film.js";
 import { bakeEdge, buildFilmFilter, createLensView, createNegView, paintGlowLayer, clipOutButtons, frameQuads, holeSpots, paintOverlay, parseColor, readScene, stripQuad, warmNegatives } from "./raster.js";
@@ -196,6 +197,14 @@ function buildControls(rows, { onOrganize, onButton, sliders = true, volume = nu
       if (sliders) panel.append(label);
       continue;
     }
+    if (type === "button") {                                   // a push button in the list (e.g. "show the start screen again")
+      const b = document.createElement("button");
+      b.type = "button"; b.textContent = "Play";
+      b.addEventListener("click", () => onInput());
+      label.append(text, b);
+      if (sliders) panel.append(label);
+      continue;
+    }
     if (type === "text") {                                     // a line of words (the sign's text)
       Object.assign(input, { type: "text", value, maxLength: 60, spellcheck: false, autocomplete: "off" });
       input.addEventListener("input", () => onInput(input.value));
@@ -220,10 +229,15 @@ function buildControls(rows, { onOrganize, onButton, sliders = true, volume = nu
   return { wrap: nav, corner: [...(sliders ? [toggle] : []), organize], left: knob ? [knob.el] : [], setters };
 }
 
-export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFade = 0.85, volumes = {}, outerGlass = {}, filmDrag = 1, filmFlutter = 1, stacking = 1, panelFalloff = 1.25, panelGlow = 1, panelGrain = 1, lightBleed = 1, lightSeep = 1.6, seepSpread = 10, signText = "dude with a pentax", showSign = false, size, controls = true, sliders = true } = {}) {
+export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFade = 0.85, volumes = {}, outerGlass = {}, filmDrag = 1, filmFlutter = 1, stacking = 1, panelFalloff = 1.25, panelGlow = 1, panelGrain = 1, lightBleed = 1, lightSeep = 1.6, seepSpread = 10, signText = "dude with a pentax", showSign = false, startScreen = true, startLength = 1600, size, controls = true, sliders = true } = {}) {
   root.classList.add("lb-root");
   const stage = div("lb-stage");
   root.replaceChildren(stage);
+  // The start screen (start-screen/): the page opens with the light off, and the light comes on once everything is drawn (`sceneReady`).
+  let markSceneReady = () => {};
+  const sceneReady = new Promise((resolve) => { markSceneReady = resolve; });
+  const start = startScreen ? createStartScreen({ host: stage, ready: Promise.all([sceneReady, document.fonts?.ready]), play: (scale) => sounds.strobe(scale), length: startLength }) : null;
+  if (start) stage.append(...start.els);
   root.append(buildFilmFilter("lb-film-alpha", parseColor(getComputedStyle(root).getPropertyValue("--lb-bg").trim() || "#eadec6")));
 
   // the outer glass (PA): 0 = a dome, 1 = a frustum widest at its base (see glass.js)
@@ -623,7 +637,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
       buildSheet(photos, fw, "lb-neg"),
       ...(glass && lens ? [buildSheet(photos, fw, "lb-ghost"), buildSheet(photos, fw, "lb-mult")] : []),
     );
-    stage.replaceChildren(...cornerEls, edgeEl, signEl, filmLayer, seepEl, holesEl, overlayEl, dustEl, glowEl, loupe.el);
+    stage.replaceChildren(...cornerEls, edgeEl, signEl, filmLayer, seepEl, holesEl, overlayEl, dustEl, glowEl, loupe.el, ...(start?.els ?? []));
     holesKey = "";
     dustKey = "";
     placeSign();
@@ -671,11 +685,13 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
           sceneRef = scene;
           loupe.el.classList.add("has-gl");
           render();
+          markSceneReady();                             // everything is drawn: the start screen may light up
         })
-        .catch((err) => console.warn("LightBox glass source failed:", err));
-    }
+        .catch((err) => { console.warn("LightBox glass source failed:", err); markSceneReady(); });
+    } else markSceneReady();                            // no glass to wait for
   }
   layout();
+  start?.run();                                         // the page is dark now; light it once everything is ready
 
   // the shadow the black ring casts onto the glass: how dark it is, and how far it fades inward
   const setShadow = (v) => loupe.el.style.setProperty("--rs", v);
@@ -757,6 +773,10 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
       { group: "Sound · sliding", key: "vol_slide", name: "Eyepiece slide", min: 0, max: 1, step: 0.01, value: vols.slide, onInput: (v) => sounds.setVolume("slide", v) },
       { group: "Sound · sliding", key: "vol_crackle", name: "Film crackle", min: 0, max: 1, step: 0.05, value: vols.crackle, onInput: (v) => sounds.setVolume("crackle", v) },
       { group: "Sound · interface", key: "vol_button", name: "Button click", min: 0, max: 1, step: 0.05, value: vols.button, onInput: (v) => sounds.setVolume("button", v) },
+      // the start screen (start-screen/): how long the light takes to come on, how loud the strobe is, and a button to see it again
+      { group: "Start screen", key: "start_length", name: "Light-up length (s)", min: 0.8, max: 3, step: 0.1, value: startLength / 1000, onInput: (v) => { if (start) start.length = v * 1000; } },
+      { group: "Start screen", key: "vol_strobe", name: "Start-up sound", min: 0, max: 1, step: 0.05, value: vols.strobe, onInput: (v) => sounds.setVolume("strobe", v) },
+      { group: "Start screen", key: "start_replay", type: "button", name: "Replay start screen", onInput: () => { sounds.unlock(); start?.replay(); } },
       // the sign on the panel: switch it off, or change its words (an empty line hides it too)
       { group: "Sign", key: "sign_on", type: "check", name: "Show text", value: signOn, onInput: (v) => { signOn = v; refreshSign(); } },
       { group: "Sign", key: "sign_text", type: "text", name: "Words", value: sign.text, onInput: (v) => { sign.setText(v); refreshSign(); } },

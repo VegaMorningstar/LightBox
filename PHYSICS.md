@@ -235,3 +235,15 @@ the rim picture → buttons → film → dust → light seep and lit holes → p
 
 *Adding a rule:* implement it, comment the rule in the code where it lives, and add it to the matching section above (or a new one),
 with the file and constant it lives in.
+
+## 9. The start screen (`start-screen/`)
+
+The page opens on the light box with its **light off**, waits until everything is drawn, then the light comes on. Then the page is exactly as it always was.
+
+- **Off:** a dark layer covers the whole light box (the eyepiece and buttons too: they are on the panel), so about a tenth of the light is left. It is there from the first frame, so there is never a flash of the lit page.
+- **Waits for everything:** the fonts, every photo decoded and the scene built (`sceneReady` in `lightbox.js`), then two painted frames, then the dark is held at least 0.6 s so it is seen. It never waits longer than 6 s for the ready signal, whatever is still loading.
+- **Light-up, about 1.6 s** (`timeline.js`; the "Light-up length" slider scales the whole shape): four weak flickers, then it strikes, over-brightens to 1.5 times normal and settles back to exactly normal; the dark and glow layers are then removed, so nothing of the effect is left running.
+- **Over-bright light passes only through what is see-through.** It is a gain on what lies under it (a `brightness` backdrop-filter), not light added on top, so the bare board, the pictures and the sprocket holes get much brighter while opaque parts (the film's borders, the eyepiece's black ring, the dark parts of the buttons) stay as dark as they were. Only a trace of blur lets the glow soften past the film's edge.
+- **Sound** (`sound.js`): a camera. A dry ratchet click for each weak flicker, a hard shutter snap ("ka-clack") over the thud of the switch at the strike, then a short film-winder whirr with its ratchet speeding up and slowing down. Its level is the "Start-up sound" slider. Browsers only start audio after the visitor has touched the page, so with no touch yet there is no sound: it is skipped, not queued (a late snap would sound wrong). "Replay start screen" in the sliders menu plays it, because that is a click.
+- **Reduced motion:** no flicker, no flash, no sound: the light fades up over about half a second.
+- **Sliders menu, group "Start screen":** light-up length, start-up sound level, replay.
