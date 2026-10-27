@@ -55,20 +55,22 @@ function drawBar(g, W, H, radii) {
   const rad = radii.map((r) => Math.max(1, Math.min(r, h / 2, w / 2)));
   g.save();
   g.translate(SHADOW_M, SHADOW_M);
+  // The whole bar, edge included, is the SAME shape as the lit panel's top (radii [R, R, small, small], from (0, 0) to (W, H)): that is what lies flush with the
+  // panel's edge. The front face is that shape drawn smaller on the right and at the bottom, and what shows of the full shape beyond it is the bar's side, in
+  // shade: nothing at the top and left, EDGE_T thick on the right and at the bottom, and tapering round the top right corner as a real plank's side does.
+  const full = rad.map((r, i) => (i === 1 || i === 2 ? r : r));
   // its shadow on the surface below: a tight dark line where it rests and a wide soft one thrown to the lower right (light from the upper left)
-  g.save(); g.translate(T, T);
-  g.shadowColor = "rgba(8, 3, 0, .6)"; g.shadowBlur = 3; g.shadowOffsetX = 1; g.shadowOffsetY = 2; g.fillStyle = "#000"; roundPath(g, w, h, rad); g.fill();
-  g.shadowColor = "rgba(8, 3, 0, .5)"; g.shadowBlur = 17; g.shadowOffsetX = 4; g.shadowOffsetY = 11; roundPath(g, w, h, rad); g.fill();
+  g.save();
+  g.shadowColor = "rgba(8, 3, 0, .6)"; g.shadowBlur = 3; g.shadowOffsetX = 1; g.shadowOffsetY = 2; g.fillStyle = "#000"; roundPath(g, W, H, full); g.fill();
+  g.shadowColor = "rgba(8, 3, 0, .5)"; g.shadowBlur = 17; g.shadowOffsetX = 4; g.shadowOffsetY = 11; roundPath(g, W, H, full); g.fill();
   g.restore();
-  // the thick edge: the front face's shape stepped down and to the right, darker the further it is, lit a little along its lower rim
-  for (let i = T; i >= 1; i--) {
-    g.save(); g.translate(i, i);
-    const k = i / T;
-    g.fillStyle = `rgb(${Math.round(46 - 30 * k)}, ${Math.round(20 - 13 * k)}, ${Math.round(9 - 6 * k)})`;
-    roundPath(g, w, h, rad); g.fill();
-    g.restore();
-  }
-  g.save(); g.translate(T, T); g.strokeStyle = "rgba(255, 196, 140, .16)"; g.lineWidth = 1; roundPath(g, w, h, rad); g.stroke(); g.restore();
+  // the side of the bar: dark, a little lighter toward its top and a faint lit line along its lower rim
+  const side = g.createLinearGradient(0, 0, W, H);
+  side.addColorStop(0, "#3a1b0d"); side.addColorStop(.5, "#1e0d06"); side.addColorStop(1, "#0b0402");
+  g.fillStyle = side; roundPath(g, W, H, full); g.fill();
+  g.save(); roundPath(g, W, H, full); g.clip();
+  g.strokeStyle = "rgba(255, 196, 140, .13)"; g.lineWidth = 1.6; roundPath(g, W, H, full); g.stroke();
+  g.restore();
   // the front face
   const rand = rng(20261027);
   g.save();

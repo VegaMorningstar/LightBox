@@ -73,19 +73,28 @@ export function paintSocketButton(ctx, { x, y, size, icon, surface }) {
   disc(.9, 1.1, r - 1, "rgba(10,6,2,.35)");
   // the frosted ivory top
   const top = ctx.createLinearGradient(-r * .7, -r * .7, r * .7, r * .7);
-  if (wood) { top.addColorStop(0, "#a07f34"); top.addColorStop(.55, "#7a5d22"); top.addColorStop(1, "#4f3a14"); }      // dark brass...
-  else { top.addColorStop(0, "#e9e2d2"); top.addColorStop(.6, "#d9d0bc"); top.addColorStop(1, "#c8bda6"); }
-  disc(0, 0, r - 3, top);
-  if (wood) {                                                                                                            // ...with a little teal patina
-    for (const [px, py, pr, a] of [[.44, .52, .5, .62], [-.45, .34, .34, .5], [.2, -.62, .26, .4]]) {
-      const pg = ctx.createRadialGradient(px * (r - 3), py * (r - 3), 0, px * (r - 3), py * (r - 3), pr * (r - 3));
-      pg.addColorStop(0, `rgba(76,154,140,${a})`); pg.addColorStop(1, "rgba(76,154,140,0)");
-      ctx.save(); ctx.beginPath(); ctx.arc(0, 0, r - 3, 0, Math.PI * 2); ctx.clip(); ctx.fillStyle = pg; ctx.fillRect(-r, -r, 2 * r, 2 * r); ctx.restore();
-    }
+  if (wood) {                                                                                                            // brass: sectors of sheen like turned metal...
+    if (ctx.createConicGradient) {
+      const cg = ctx.createConicGradient((25 * Math.PI) / 180, 0, 0);
+      [[0, "#b99340"], [.106, "#7a5d22"], [.194, "#cba24b"], [.328, "#6a4f1b"], [.444, "#b58f3c"], [.594, "#5f4617"], [.728, "#c29b45"], [.867, "#6c511d"], [1, "#b99340"]].forEach(([o, col]) => cg.addColorStop(o, col));
+      disc(0, 0, r - 3, cg);
+    } else { top.addColorStop(0, "#a07f34"); top.addColorStop(.55, "#7a5d22"); top.addColorStop(1, "#4f3a14"); disc(0, 0, r - 3, top); }
+  } else { top.addColorStop(0, "#e9e2d2"); top.addColorStop(.6, "#d9d0bc"); top.addColorStop(1, "#c8bda6"); disc(0, 0, r - 3, top); }
+  if (wood) {                                                                                                            // ...with patina in patches that have firm edges
+    const R = r - 3;
+    ctx.save(); ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2); ctx.clip();
+    const patch = (px, py, pr, col) => { ctx.fillStyle = col; ctx.beginPath(); ctx.arc(px * R, py * R, pr * R, 0, Math.PI * 2); ctx.fill(); };
+    patch(.40, .52, .30, "rgba(78,158,142,.85)"); patch(.48, .32, .16, "rgba(66,146,132,.8)"); patch(-.52, .40, .22, "rgba(70,150,136,.8)");
+    patch(.12, .72, .13, "rgba(84,162,146,.75)"); patch(.24, -.68, .13, "rgba(88,164,148,.7)"); patch(-.68, -.2, .09, "rgba(70,148,134,.7)");
+    // the glints: a bright one on the upper left with a crisp edge, a small one lower right
+    ctx.fillStyle = "rgba(255,244,200,.85)"; ctx.beginPath(); ctx.ellipse(-.4 * R, -.52 * R, .3 * R, .17 * R, -0.5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "rgba(255,226,150,.5)"; ctx.beginPath(); ctx.arc(.48 * R, .56 * R, .07 * R, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  } else {
+    const glow = ctx.createRadialGradient(-r * .25, -r * .3, 0, -r * .25, -r * .3, r * .75);
+    glow.addColorStop(0, "rgba(255,255,255,.35)"); glow.addColorStop(1, "rgba(255,255,255,0)");
+    disc(0, 0, r - 3, glow);
   }
-  const glow = ctx.createRadialGradient(-r * .25, -r * .3, 0, -r * .25, -r * .3, r * .75);
-  glow.addColorStop(0, wood ? "rgba(255,228,150,.34)" : "rgba(255,255,255,.35)"); glow.addColorStop(1, wood ? "rgba(255,228,150,0)" : "rgba(255,255,255,0)");
-  disc(0, 0, r - 3, glow);
   // the etched icon: a light lip on the lower right, then the dark icon
   const d = ICON_DATA[icon];
   if (d) {
