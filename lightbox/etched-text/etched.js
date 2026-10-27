@@ -27,7 +27,7 @@ const FS = 100;                                 // the type size in the drawing'
 const PAD = 8;                                  // room round the ink so the engraving's shading is not clipped
 
 /* `swap` (off by default) lets a few letters come from another installed face, per letter, in the same line: { chars: "e", fullName: ["Times New Roman Italic", "TimesNewRomanPS-ItalicMT"], style: "italic" } */
-export function createEtchedText({ text: initialText = "", fontFamily = "EtchedScript", fontUrl = FONT_URL, weight = "400", swap = null } = {}) {
+export function createEtchedText({ text: initialText = "", fontFamily = "EtchedScript", fontUrl = FONT_URL, weight = "400", swap = null, ink = INK, lip = LIP, shade = SHADE } = {}) {
   let text = initialText;
   let ready = Promise.resolve();
   const swapFamily = `${fontFamily}-swap`;
@@ -61,12 +61,12 @@ export function createEtchedText({ text: initialText = "", fontFamily = "EtchedS
   el.innerHTML = `<defs><filter id="${id}" filterUnits="userSpaceOnUse" x="-20" y="-20" width="2000" height="400" color-interpolation-filters="sRGB">` +
     // a dark band along the upper-left inside edge of each stroke: the strokes shifted down-right, taken away from the strokes
     `<feOffset in="SourceAlpha" dx="1.5" dy="1.9" result="s"/><feComposite in="SourceAlpha" in2="s" operator="out" result="band"/><feGaussianBlur in="band" stdDeviation="0.5" result="bandSoft"/>` +
-    `<feFlood flood-color="${SHADE}" flood-opacity=".9"/><feComposite in2="bandSoft" operator="in" result="shadow"/><feComposite in="shadow" in2="SourceAlpha" operator="in" result="shadowIn"/>` +
+    `<feFlood flood-color="${shade}" flood-opacity=".9"/><feComposite in2="bandSoft" operator="in" result="shadow"/><feComposite in="shadow" in2="SourceAlpha" operator="in" result="shadowIn"/>` +
     // a thin light lip just outside the lower-right edge: the strokes shifted down-right, minus the strokes
     `<feOffset in="SourceAlpha" dx="1.8" dy="2.3" result="s2"/><feComposite in="s2" in2="SourceAlpha" operator="out" result="lipBand"/><feGaussianBlur in="lipBand" stdDeviation="0.6" result="lipSoft"/>` +
-    `<feFlood flood-color="${LIP}" flood-opacity=".95"/><feComposite in2="lipSoft" operator="in" result="lip"/>` +
+    `<feFlood flood-color="${lip}" flood-opacity=".95"/><feComposite in2="lipSoft" operator="in" result="lip"/>` +
     `<feMerge><feMergeNode in="lip"/><feMergeNode in="SourceGraphic"/><feMergeNode in="shadowIn"/></feMerge></filter></defs>` +
-    `<g filter="url(#${id})"><text fill="${INK}" font-size="${FS}" font-weight="${weight}" font-family='${stack.replace(/'/g, "")}' xml:space="preserve"></text></g>`;
+    `<g filter="url(#${id})"><text fill="${ink}" font-size="${FS}" font-weight="${weight}" font-family='${stack.replace(/'/g, "")}' xml:space="preserve"></text></g>`;
   const node = el.querySelector("text");
   node.textContent = text;
 
@@ -95,13 +95,13 @@ export function createEtchedText({ text: initialText = "", fontFamily = "EtchedS
     ctx.font = `${weight} ${FS}px ${stack}`;
     ctx.textBaseline = "alphabetic";
     const bx = PAD + k.left, by = k.base;
-    ctx.fillStyle = LIP; ctx.globalAlpha = 0.85; ctx.fillText(text, bx + 1.8, by + 2.3);   // the lip, under
-    ctx.globalAlpha = 1; ctx.fillStyle = INK; ctx.fillText(text, bx, by);                   // the cut
+    ctx.fillStyle = lip; ctx.globalAlpha = 0.85; ctx.fillText(text, bx + 1.8, by + 2.3);   // the lip, under
+    ctx.globalAlpha = 1; ctx.fillStyle = ink; ctx.fillText(text, bx, by);                   // the cut
     // the shaded wall: the cut's own shape with its lower-right part taken away, drawn over the cut
     ctx.save(); ctx.beginPath(); ctx.rect(0, 0, k.W, k.H); ctx.clip();
     const c = document.createElement("canvas"); c.width = Math.max(1, Math.ceil(k.W * u * 2)); c.height = Math.max(1, Math.ceil(k.H * u * 2));
     const g = c.getContext("2d"); g.scale(u * 2, u * 2); g.font = ctx.font; g.textBaseline = "alphabetic";
-    g.fillStyle = "#000"; g.fillText(text, bx, by);
+    g.fillStyle = shade; g.fillText(text, bx, by);
     g.globalCompositeOperation = "destination-out"; g.fillText(text, bx + 1.5, by + 1.9);
     ctx.globalAlpha = 0.8; ctx.drawImage(c, 0, 0, k.W, k.H);
     ctx.restore();

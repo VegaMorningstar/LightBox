@@ -3,7 +3,7 @@
  *
  *   import { createPressButton, paintPressButton } from "./press-button/press-button.js";
  *
- *   const pb = createPressButton({ label: "Light", on: false, onChange: (on) => ... });
+ *   const pb = createPressButton({ label: "Light", on: false, onChange: (on) => ..., surface: "wood" });   // surface "wood": set in dark wood (a nav bar)
  *   row.append(pb.el);                  // a <button role="switch">; click, tap, Enter or Space presses it
  *   pb.set(true);                       // move it from the outside (does not call onChange); pb.on is its state
  *   paintPressButton(ctx, { x, y, w, h, on });   // the same button on a canvas (x, y: its centre), for anything that redraws the surface (a magnifier)
@@ -27,7 +27,7 @@ const PAD = 8;                                // drawing units of room all round
 
 /* The plate with its knob. `id` keeps the gradient names of one drawing apart from another's. `baked`: null for the page (the stylesheet moves the knob), or
    "out" / "in" to draw the knob already out or pressed in (for the canvas copy). */
-function plateSvg(id, cls = "", baked = null) {
+function plateSvg(id, cls = "", baked = null, wood = false) {
   const P = "M6,2 H162 Q166,2 166,6 V70 Q166,74 162,74 H6 Q2,74 2,70 V6 Q2,2 6,2 Z";
   const hole = (cx, cy, r) =>
     `<circle cx="${cx}" cy="${cy}" r="${r}" fill="url(#${id}-hole)"/>` +
@@ -58,10 +58,10 @@ function plateSvg(id, cls = "", baked = null) {
     `</defs>` +
     // SET INTO THE PANEL, not floating on it: the plate sits in a socket cut in the surface. A dark gap right round it, the far lip catching the light on the
     // lower right, the near lip in shade on the upper left, and a soft shadow thrown to the lower right (light from the upper left)
-    `<path d="${P}" fill="rgba(30,18,6,.34)" filter="url(#${id}-b2)" transform="translate(4.5 6)"/>` +
-    `<path d="${P}" fill="none" stroke="rgba(255,252,240,.95)" stroke-width="3.4" filter="url(#${id}-b1)" transform="translate(2.6 3.4)"/>` +
-    `<path d="${P}" fill="none" stroke="rgba(70,48,26,.5)" stroke-width="3" filter="url(#${id}-b1)" transform="translate(-1.4 -1.8)"/>` +
-    `<path d="${P}" fill="none" stroke="rgba(32,20,8,.9)" stroke-width="4.6" filter="url(#${id}-b1)"/>` +
+    `<path d="${P}" fill="${wood ? "rgba(0,0,0,.5)" : "rgba(30,18,6,.34)"}" filter="url(#${id}-b2)" transform="translate(4.5 6)"/>` +
+    `<path d="${P}" fill="none" stroke="${wood ? "rgba(255,214,160,.3)" : "rgba(255,252,240,.95)"}" stroke-width="3.4" filter="url(#${id}-b1)" transform="translate(2.6 3.4)"/>` +
+    `<path d="${P}" fill="none" stroke="${wood ? "rgba(0,0,0,.45)" : "rgba(70,48,26,.5)"}" stroke-width="3" filter="url(#${id}-b1)" transform="translate(-1.4 -1.8)"/>` +
+    `<path d="${P}" fill="none" stroke="${wood ? "rgba(4,1,0,.95)" : "rgba(32,20,8,.9)"}" stroke-width="4.6" filter="url(#${id}-b1)"/>` +
     // the plate: green metal, rust through it, a worn rim
     `<path d="${P}" fill="url(#${id}-plate)"/>` +
     `<rect x="2" y="2" width="164" height="72" fill="none" filter="url(#${id}-rust)" clip-path="url(#${id}-clip)"/>` +
@@ -91,7 +91,7 @@ function plateSvg(id, cls = "", baked = null) {
 
 let counter = 0;
 
-export function createPressButton({ label = "Button", on = false, onChange } = {}) {
+export function createPressButton({ label = "Button", on = false, onChange, surface = "panel" } = {}) {
   ensureStyles();
   const el = document.createElement("button");
   el.type = "button";
@@ -100,7 +100,7 @@ export function createPressButton({ label = "Button", on = false, onChange } = {
   el.setAttribute("role", "switch");
   el.setAttribute("aria-label", label);
   el.title = label;
-  el.innerHTML = plateSvg(`pb${++counter}`, "pb-plate");
+  el.innerHTML = plateSvg(`pb${++counter}`, "pb-plate", null, surface === "wood");
   const api = {
     el,
     get on() { return el.getAttribute("aria-checked") === "true"; },
@@ -113,18 +113,18 @@ export function createPressButton({ label = "Button", on = false, onChange } = {
 
 /* the plate as an image, for canvases: one with the knob out, one with it pressed in (made once each; drawn only when loaded) */
 const images = {};
-function plateImage(on) {
-  const k = on ? "in" : "out";
+function plateImage(on, wood) {
+  const k = (on ? "in" : "out") + (wood ? "w" : "");
   if (!images[k]) {
     images[k] = new Image();
-    images[k].src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(plateSvg("pbc" + k, "", k));
+    images[k].src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(plateSvg("pbc" + k, "", on ? "in" : "out", wood));
   }
   return images[k];
 }
 
 /* the button drawn on a canvas, centred on (x, y), w by h px: the same drawing as the page's, with the knob out (off) or pressed in (on) */
-export function paintPressButton(ctx, { x, y, w = 95.9, h = 43.4, on = false }) {
-  const img = plateImage(on);
+export function paintPressButton(ctx, { x, y, w = 95.9, h = 43.4, on = false, surface }) {
+  const img = plateImage(on, surface === "wood");
   if (!img.complete || !img.naturalWidth) return;
   const px = (PAD * w) / VW, py = (PAD * h) / VH;                // the image has room round the plate for its socket
   ctx.drawImage(img, x - w / 2 - px, y - h / 2 - py, w + 2 * px, h + 2 * py);

@@ -26,7 +26,7 @@
 .sb-knob[data-covered] { pointer-events: none; }
 
 /* the scale round it, on the surface */
-.sb-knob-sign path { stroke: rgba(46, 34, 20, .85); stroke-width: 2.8; fill: none; stroke-linecap: round; }   /* drawn as strokes, so they stay crisp and bold at any size */
+.sb-knob-sign path { stroke: var(--sb-marks, rgba(46, 34, 20, .85)); stroke-width: 2.8; fill: none; stroke-linecap: round; }   /* drawn as strokes, so they stay crisp and bold at any size */
 .sb-knob-marks {
   position: absolute;
   inset: -23%;
@@ -34,7 +34,7 @@
   height: 146%;
   overflow: visible;
   pointer-events: none;
-  stroke: rgba(54, 40, 24, .8);
+  stroke: var(--sb-marks, rgba(54, 40, 24, .8));   /* the scale's colour: dark on the panel, cream inlay on a wooden bar */
   stroke-linecap: round;
 }
 

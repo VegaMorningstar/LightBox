@@ -55,16 +55,17 @@ export const ICONS = Object.fromEntries(Object.entries(ICON_DATA).map(([k, d]) =
 
 /* Draw a button onto a canvas, as it looks on the page, for anything that redraws the surface itself (a magnifier over it, say).
    ctx: a 2D context, already transformed so one unit is one css px. x, y: the button's centre. size: its diameter.
-   icon: a name from ICONS. Pressed state is not drawn. */
-export function paintSocketButton(ctx, { x, y, size, icon }) {
+   icon: a name from ICONS. surface: "wood" for a button set in dark wood (a nav bar). Pressed state is not drawn. */
+export function paintSocketButton(ctx, { x, y, size, icon, surface }) {
   const r = size / 2;
   const disc = (cx, cy, rad, fill) => { ctx.beginPath(); ctx.arc(cx, cy, rad, 0, Math.PI * 2); ctx.fillStyle = fill; ctx.fill(); };
   ctx.save();
   ctx.translate(x, y);
   // the socket: a lit lip on the lower right, a shaded one on the upper left, and the dark gap
-  disc(1.2, 1.8, r + 2.9, "rgba(255,252,240,.85)");
-  disc(-.8, -1, r + 2.9, "rgba(70,48,26,.3)");
-  disc(0, 0, r + 2, "rgba(58,40,22,.5)");
+  const wood = surface === "wood";                                  // on dark wood the lip is faint and warm, the gap dark
+  disc(1.2, 1.8, r + 2.9, wood ? "rgba(255,214,160,.22)" : "rgba(255,252,240,.85)");
+  disc(-.8, -1, r + 2.9, wood ? "rgba(0,0,0,.35)" : "rgba(70,48,26,.3)");
+  disc(0, 0, r + 2, wood ? "rgba(6,2,0,.7)" : "rgba(58,40,22,.5)");
   // the rim
   const rim = ctx.createLinearGradient(-r, -r, r, r);
   rim.addColorStop(0, "#5a4636"); rim.addColorStop(.45, "#33271c"); rim.addColorStop(1, "#17110b");

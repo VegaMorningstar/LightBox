@@ -1,0 +1,47 @@
+/* nav-bar: a glossy wooden bar that rests on top of a surface and carries its controls (see nav-bar.js). The bar is an opaque object lying on the panel,
+ * above the film and everything printed on the panel and below the eyepiece. Controls placed on it (the push buttons, the volume knob, the light button)
+ * are restyled here for dark wood: their sockets are dark with only a faint warm lip, and the engraved scale round the knob is cream inlay. */
+
+.nb {
+  --sb-marks: rgba(238, 222, 178, .94);                  /* the knob's scale and its − and +: cream inlay in the wood */
+  position: absolute;
+  z-index: 2;                                            /* over the film and the panel's layers, under the eyepiece */
+}
+.nb-wood {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  border-radius: 7px;
+  /* it rests on the panel: a thin dark contact line, and a soft shadow to the lower right (light from the upper left) */
+  box-shadow: 0 1px 1.5px rgba(8, 3, 0, .8), 3px 5px 9px rgba(10, 4, 0, .5), 1px 2px 3px rgba(10, 4, 0, .45);
+}
+.nb-row {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);                           /* every control is centred on the bar's own middle line */
+  display: flex;
+  align-items: center;
+  gap: var(--sb-gap, 14px);
+}
+.nb-left { left: var(--nb-pad, 24px); }
+.nb-right { right: var(--nb-pad, 24px); }
+
+/* the controls on dark wood: the same sockets, but a dark gap and only a faint warm lip catching the light */
+.nb .sb-button {
+  --socket:
+    0 0 2.6px 2.2px rgba(6, 2, 0, .7),
+    1.2px 1.8px 2.4px 2.2px rgba(255, 214, 160, .22),
+    -.8px -1px 3px 2.2px rgba(0, 0, 0, .35),
+    2px 3px 6px 2px rgba(0, 0, 0, .25);
+}
+.nb .sb-knob {
+  --socket:
+    0 0 2.6px 2.2px rgba(6, 2, 0, .7),
+    1.2px 1.8px 2.4px 2.2px rgba(255, 214, 160, .22),
+    -.8px -1px 3px 2.2px rgba(0, 0, 0, .35),
+    2px 3px 6px 2px rgba(0, 0, 0, .25);
+  box-shadow: 4px 6px 9px 1px rgba(0, 0, 0, .55), var(--socket), inset 0 0 3px 1px rgba(10, 6, 2, .5);
+}
+.nb .sb-button:focus-visible, .nb .pb:focus-visible { outline-color: #f1e4bf; }

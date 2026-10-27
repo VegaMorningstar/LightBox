@@ -12,14 +12,15 @@ import { createSounds, DEFAULT_VOLUMES, GLASS_DRAG_ENABLED } from "./sounds.js";
 import { buildDial, buildTrim, setDialLight, DEG_PER_ZOOM, DETENTS, GLASS_RATIO, ZOOM_MAX, ZOOM_MIN } from "./dial.js";
 import { createGlass, createLens } from "./glass.js";
 import { createBleed, paintHoles } from "./bleed.js";
-import { createSocketButton, mountSocketCorner, setCovered, setPressed, ICONS } from "./socket-buttons/buttons.js";
+import { createSocketButton, setPressed, ICONS } from "./socket-buttons/buttons.js";
 import { createSocketKnob } from "./socket-buttons/knob.js";
 import { createEtchedText } from "./etched-text/etched.js";
 import { createStartScreen } from "./start-screen/start-screen.js";
 import { createPressButton } from "./press-button/press-button.js";
+import { BAR_H, createNavBar } from "./nav-bar/nav-bar.js";
 import { createSpecks } from "./dust.js";
 import { createFilm } from "./film.js";
-import { bakeEdge, buildFilmFilter, createLensView, createNegView, paintGlowLayer, clipOutButtons, frameQuads, holeSpots, paintOverlay, parseColor, readScene, stripQuad, warmNegatives } from "./raster.js";
+import { bakeEdge, buildFilmFilter, createLensView, createNegView, paintGlowLayer, frameQuads, holeSpots, paintOverlay, parseColor, readScene, stripQuad, warmNegatives } from "./raster.js";
 
 const STRIP_DY = [0, 0.34, 0.12, 0.5, 0.05, 0.27];   // per-strip stagger, in frame widths
 const STRIP_ROT = [-0.3, 0.25, -0.15, 0.35, -0.25, 0.15]; // per-strip tilt, degrees
@@ -228,7 +229,7 @@ function buildControls(rows, { onOrganize, onButton, sliders = true, volume = nu
   const knob = volume ? createSocketKnob({ label: "Volume", min: 0, max: 2, value: volume.value, ...volume.sounds, onInput: (v) => { volume.onInput(v); setters.vol_master?.(v); } }) : null;
   if (knob) setters.vol_master_knob = (v) => knob.set(v);
   // the press button next to the knob: it turns the light box's light on and off (press-button/, start-screen/)
-  const light = lightSwitch ? createPressButton({ label: "Light", on: false, onChange: lightSwitch.onChange }) : null;
+  const light = lightSwitch ? createPressButton({ label: "Light", on: false, onChange: lightSwitch.onChange, surface: "wood" }) : null;
   return { wrap: nav, corner: [...(sliders ? [toggle] : []), organize], left: [...(knob ? [knob.el] : []), ...(light ? [light.el] : [])], lightSwitch: light, setters };
 }
 
@@ -266,15 +267,19 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
   let seep = lightSeep, spread = seepSpread;
   let specks = null;
   let edgeSize = { m: 14, f: 40 };          // the dark margin and the light's falloff inside the panel's rim (see the stylesheet)
-  // The sign: lettering etched into the panel between the volume knob and the buttons (etched-text/). It lies on the surface, under the film,
-  // and the glasses draw it too (see updateCovered, which hands them its box).
+  // The nav bar (nav-bar/): a wooden bar resting on top of the light box, across its top, carrying the volume knob, the light button, the sliders button and
+  // the revert button. It is an opaque object over the film and everything printed on the panel, and under the eyepiece; the glasses draw it too.
+  const bar = createNavBar();
+  let barBox = { x: 0, y: 0, w: 0, h: BAR_H };                         // where it lies, in stage px
+  // The sign: lettering inlaid in the bar between the controls (etched-text/), in cream. The glasses draw it too (see updateBar, which hands them its box).
   const SIGN_WORDS = "dude with a pentax";
   let signOn = showSign && signText !== "";                           // "Show text" in the sliders menu; it starts hidden unless `showSign` is set
-  const sign = createEtchedText({ text: signText || SIGN_WORDS });
+  const sign = createEtchedText({ text: signText || SIGN_WORDS, ink: "rgba(238, 222, 178, .94)", lip: "#120600", shade: "#8a7448" });
   const signEl = sign?.el ?? document.createElement("div");          // an SVG: vector, so it stays sharp at any zoom
   signEl.setAttribute("class", "lb-sign");
+  bar.el.append(signEl);
   let signBox = null;                         // {x, y, w, h}: its centre and size, in stage (sheet) px; null when there is no room for it
-  let cornerEls = [], cornerButtons = [], leftButtons = [];   // the push buttons, the volume knob and the light switch, which lie on the panel under the film
+  let cornerEls = [bar.el], cornerButtons = [], leftButtons = [];   // the bar, and the controls on it: the volume knob and the light button (left), the sliders and revert buttons (right)
   let grain = panelGrain;
   let falloff = panelFalloff;
   let glow = panelGlow;
@@ -363,56 +368,48 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     paintHoles(c, holes, quads, spread, seep, null, sc.holeExclude);
   }
 
-  // The buttons lie on the panel, so film can slide over them; a button with film over any part of it cannot be pressed (a
-  // press there takes hold of the film instead).
-  /* set the sign between the knob and the nearest button, centred on the knob's height; hide it when the gap is too narrow for it */
+  /* set the sign on the bar between the controls, centred on the screen and on the bar's middle line; hide it when the gap is too narrow for it */
   function placeSign() {
     signBox = null;
     signEl.style.display = "none";
-    if (!signOn || !sign.text.trim() || !cornerButtons.length) return;
-    const origin = stage.getBoundingClientRect();
-    const knob = cornerButtons.find((b) => b.dataset.icon === "knob");
+    if (!signOn || !sign.text.trim() || !cornerButtons.length || !leftButtons.length) return;
+    const o = bar.el.getBoundingClientRect();
     const rights = cornerButtons.filter((b) => !leftButtons.includes(b));
-    if (!knob || !rights.length) return;
-    const k = knob.getBoundingClientRect();
-    // between the last thing on the left (the knob, whose scale reaches about 14 px past it, then the light switch) and the nearest button's socket, with a little air on each side
-    const last = leftButtons[leftButtons.length - 1].getBoundingClientRect();
-    const left = last.right - origin.left + (leftButtons[leftButtons.length - 1] === knob ? 28 : 24), right = Math.min(...rights.map((b) => b.getBoundingClientRect().left)) - origin.left - 20;
+    if (!rights.length) return;
+    // between the last thing on the left (the knob's scale reaches about 14 px past it) and the first thing on the right, with a little air on each side
+    const lastEl = leftButtons[leftButtons.length - 1];
+    const left = lastEl.getBoundingClientRect().right - o.left + (lastEl.dataset.icon === "knob" ? 28 : 22);
+    const right = Math.min(...rights.map((b) => b.getBoundingClientRect().left)) - o.left - 20;
     const { aspect, midY } = sign.measure();                               // the lettering's box, width over height, and where the middle of its small letters is
-    // centred on the screen (the panel's middle), not on the gap, so the room it has is twice the smaller distance from the middle to the knob's side or the buttons' side
-    const cx = origin.width / 2, room = 2 * Math.min(cx - left, right - cx);
+    // centred on the screen (the bar's middle), not on the gap, so the room it has is twice the smaller distance from the middle to the left controls or the right ones
+    const cx = o.width / 2, room = 2 * Math.min(cx - left, right - cx);
     if (room < 60) return;
-    // the four words stay together on one line: the whole lettering gets smaller to fit, it never wraps
-    const h = Math.min(52, 0.8 * room / aspect), w = h * aspect;
-    // the middle of the small letters level with the middle of the knob, so it reads as one line with it
-    const kc = k.top - origin.top + k.height / 2;
-    const top = kc - midY * h;
+    // the words stay together on one line: the whole lettering gets smaller to fit, it never wraps
+    const h = Math.min(46, 0.8 * room / aspect), w = h * aspect;
+    // the middle of the small letters on the bar's middle line, level with the controls
+    const top = o.height / 2 - midY * h;
     Object.assign(signEl.style, { display: "block", left: `${cx - w / 2}px`, top: `${top}px`, width: `${w}px`, height: `${h}px` });
-    signBox = { x: cx, y: top + h / 2, w, h };
+    signBox = { x: barBox.x + cx, y: barBox.y + top + h / 2, w, h };       // (in stage px, for the glasses)
   }
   /* put the sign where it belongs after it was switched on or off or its words changed, and redraw what shows it (the glass views) */
   function refreshSign() { placeSign(); if (sceneRef) { render(); kick?.(); } }
   sign.ready.then(() => { if (cornerButtons.length) { placeSign(); if (sceneRef) render(); } });
 
-  function updateCovered() {
+  /* hand the glasses the bar, its controls and the sign (they draw them over everything on the panel, as the page does) */
+  function updateBar() {
     if (!cornerButtons.length) return;
     const origin = stage.getBoundingClientRect();
-    const quads = sceneRef.strips.map(stripQuad);
     const shown = [];
     for (const b of cornerButtons) {
       const r = b.getBoundingClientRect();
-      const cx = r.left - origin.left + r.width / 2, cy = r.top - origin.top + r.height / 2, rad = r.width / 2;
-      const rect = b.dataset.icon === "press";                   // the light button is a rectangle, the rest are round
-      let covered = false;
-      for (let k = 0; k < 9 && !covered; k++) {                 // the centre and eight points round its edge
-        const a = (k - 1) * (Math.PI / 4), px = k ? cx + (rect ? Math.sign(Math.cos(a)) * r.width / 2 * (Math.abs(Math.cos(a)) > 0.1 ? 1 : 0) : Math.cos(a) * rad) : cx, py = k ? cy + (rect ? Math.sign(Math.sin(a)) * r.height / 2 * (Math.abs(Math.sin(a)) > 0.1 ? 1 : 0) : Math.sin(a) * rad) : cy;
-        covered = quads.some((q) => insideQuad(q, px, py));
-      }
-      setCovered(b, covered);
-      shown.push(rect ? { x: cx, y: cy, size: r.height, icon: "press", w: r.width, h: r.height, on: b.getAttribute("aria-checked") === "true" } : { x: cx, y: cy, size: r.width, icon: b.dataset.icon, angle: +(b.dataset.angle ?? 0) });
+      const cx = r.left - origin.left + r.width / 2, cy = r.top - origin.top + r.height / 2;
+      shown.push(b.dataset.icon === "press"
+        ? { x: cx, y: cy, size: r.height, icon: "press", w: r.width, h: r.height, on: b.getAttribute("aria-checked") === "true", surface: "wood" }      // the light button is a rectangle, the rest are round
+        : { x: cx, y: cy, size: r.width, icon: b.dataset.icon, angle: +(b.dataset.angle ?? 0), surface: "wood" });
     }
     if (signBox) shown.push({ x: signBox.x, y: signBox.y, size: signBox.h, icon: "sign", w: signBox.w, h: signBox.h, paint: (ctx, x, y, w, h) => sign.paint(ctx, x, y, w, h) });
-    sceneRef.buttons = shown;       // the glasses draw them too, under the film
+    sceneRef.bar = { ...barBox, wood: bar.wood };
+    sceneRef.buttons = shown;
   }
 
   // The dust lies on the panel, so it stays put while the film slides over it; it is drawn again whenever a photograph
@@ -433,13 +430,11 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     c.setTransform(1, 0, 0, 1, 0, 0);
     c.clearRect(0, 0, dustEl.width, dustEl.height);
     c.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const clipped = clipOutButtons(c, sc.buttons);          // no dust on the buttons, the knob or its markings
-    specks.draw(c, null, frames);
-    if (clipped) c.restore();
+    specks.draw(c, null, frames);          // (the bar lies over it, so none shows on the controls)
   }
 
   const render = () => {
-    if (sceneRef) { paintSeep(); updateCovered(); paintDust(); }
+    if (sceneRef) { paintSeep(); updateBar(); paintDust(); }
     const L = smooth(lift) * liftHeight;
     loupe.el.style.transform = `translate(${cur.x - Do / 2}px, ${cur.y - Do / 2}px) scale(${(1 + LIFT_SCALE * L).toFixed(4)})`;
     loupe.el.style.setProperty("--lift", L.toFixed(3));
@@ -611,7 +606,10 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     edgeSize = { m: edgeM, f: edgeF, blur: Math.max(5, Math.min(11, innerWidth * 0.009)) };
     const pad = Math.round(edgeM + edgeF + 8);
     stage.style.setProperty("--pad", `${pad}px`);
-    stage.style.setProperty("--pad-top", `${pad + 80}px`);       // room above the film for the buttons, in the lit part of the panel
+    // the bar rests across the top of the panel, inside the dark margin; the film starts below it
+    barBox = { x: Math.round(edgeM + 12), y: Math.round(edgeM + 10), w: Math.max(200, Math.round(stage.clientWidth - 2 * (edgeM + 12))), h: BAR_H };
+    bar.place(barBox, Math.min(2, window.devicePixelRatio || 1));
+    stage.style.setProperty("--pad-top", `${Math.max(pad + 80, barBox.y + BAR_H + 36)}px`);       // room above the film for the bar
     const inner = stage.clientWidth - pad * 2;
     lastWidth = root.clientWidth;
     const cols = columnsFor(inner);
@@ -642,7 +640,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
       buildSheet(photos, fw, "lb-neg"),
       ...(glass && lens ? [buildSheet(photos, fw, "lb-ghost"), buildSheet(photos, fw, "lb-mult")] : []),
     );
-    stage.replaceChildren(...cornerEls, edgeEl, signEl, filmLayer, seepEl, holesEl, overlayEl, dustEl, glowEl, loupe.el, ...(start?.els ?? []));
+    stage.replaceChildren(...cornerEls, edgeEl, filmLayer, seepEl, holesEl, overlayEl, dustEl, glowEl, loupe.el, ...(start?.els ?? []));
     holesKey = "";
     dustKey = "";
     placeSign();
@@ -802,8 +800,8 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     // the switch follows the light: it flips on when the light-up begins, and off when the light goes out (and the glasses redraw it)
     if (start && c.lightSwitch) start.onState = (on) => { c.lightSwitch.set(on); if (sceneRef) { render(); kick(); } };
     root.append(c.wrap);
-    cornerEls = [mountSocketCorner(stage, c.corner), ...(c.left.length ? [mountSocketCorner(stage, c.left, { side: "left" })] : [])];
-    stage.prepend(...cornerEls);         // the buttons lie on the panel, under the film
+    bar.left.append(...c.left);          // the controls sit on the bar: the knob and the light button from its left end...
+    bar.right.append(...c.corner);       // ...the sliders and revert buttons from its right end
     cornerButtons = [...c.corner, ...c.left];
     leftButtons = c.left;
     placeSign();
@@ -1004,7 +1002,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     const b = stage.getBoundingClientRect();
     return { x: e.clientX - b.left, y: e.clientY - b.top };
   };
-  const onBoard = (e) => !e.target.closest(".lb-loupe, .lb-nav, .sb-button");
+  const onBoard = (e) => !e.target.closest(".lb-loupe, .lb-nav, .nb");      // (the bar lies over the film: a press on it never takes hold of the film)
   function letGo() {
     if (!gripping) return;
     gripping = false;
