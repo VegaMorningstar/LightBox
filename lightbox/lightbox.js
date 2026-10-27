@@ -341,9 +341,14 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
   let fade = shadowFade;
   let lensPad = 0;
 
+  /* The wooden bar is a solid wall: an eyepiece resting on the light box cannot go past it (its rim stops at the bar's lower edge, and a throw bounces off it as off
+     any edge, see coast). Lifted, the eyepiece is above the bar and goes right over it. */
+  const BAR_CLEAR = 0.2;                  // the eyepiece counts as lifted clear of the bar once its lift is past this
+  const barLimit = () => barBox.y + barBox.h + Do / 2;     // the highest the eyepiece's centre may be on the board: its rim stops at the bar's lower edge
   const clamp = () => {
     goal.x = Math.max(0, Math.min(stage.clientWidth, goal.x));
     goal.y = Math.max(0, Math.min(stage.offsetHeight, goal.y));
+    if (lift < BAR_CLEAR) goal.y = Math.max(goal.y, barLimit());
   };
 
   // light seeping onto the film: the soft spill from the open board, and the lit sprocket holes
@@ -536,6 +541,8 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     lastT = t;
     if (adaptive && raw) govern(raw);
     if (coasting) coast(dt);
+    // set down over the bar (it was lifted across it and let go): it cannot rest on the bar, so it is moved off it, down to the board
+    if (lift < BAR_CLEAR && goal.y < barLimit()) { goal.y = barLimit(); if (vel.y < 0) vel.y *= -BOUNCE; }
     // up steadily (the page eases it in and out), down about twice as fast; the sound of it touching down plays as it lands
     const wasUp = lift > 0;
     if (lift < liftGoal) lift = Math.min(liftGoal, lift + dt / liftTime);

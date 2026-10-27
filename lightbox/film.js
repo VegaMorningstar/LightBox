@@ -127,11 +127,24 @@ export function createFilm(scene, cfg = { push: 1, flutter: 1, rub: 0.5, eyeLoad
   /* Neighbours keep apart unless one of them has been placed by hand. */
   const mustStayApart = (i) => !scene.strips[i].manual && !scene.strips[i + 1].manual;
 
-  /* is this strip somewhere allowed: on the board, and (if untouched) clear of its neighbours? */
+  /* The wooden bar across the top of the light box (scene.bar, in sheet px) is a solid wall: no part of a strip may go up past its lower edge: a strip dragged, thrown or nudged against it just stops there. Any of a strip's four corners above that edge, under the bar's span, means it is in the bar. */
+  function hitsBar(s) {
+    const b = scene.bar;
+    if (!b) return false;
+    const wall = b.y + b.h, [tx, ty] = topOf(s);
+    for (const [lx, ly] of [[-s.w / 2, 0], [s.w / 2, 0], [s.w / 2, s.h], [-s.w / 2, s.h]]) {
+      const [dx, dy] = rotate(s.rot, lx, ly), x = tx + dx, y = ty + dy;
+      if (y < wall - 0.5 && x > b.x && x < b.x + b.w) return true;
+    }
+    return false;
+  }
+
+  /* is this strip somewhere allowed: on the board, clear of the bar, and (if untouched) clear of its neighbours? */
   function allowed(s) {
     const i = scene.strips.indexOf(s);
     const [cx, cy] = centreOf(s);
     if (cx < 0 || cx > scene.W || cy < 0 || cy > scene.H) return false;
+    if (hitsBar(s)) return false;
     if (i > 0 && mustStayApart(i - 1) && spare(i - 1) < KEEP_APART) return false;
     if (i < scene.strips.length - 1 && mustStayApart(i) && spare(i) < KEEP_APART) return false;
     return true;
