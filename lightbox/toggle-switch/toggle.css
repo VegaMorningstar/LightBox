@@ -1,0 +1,96 @@
+/* toggle-switch: a brass toggle switch in a brushed brass plate, with two slot screws and a knurled lever that stands up (on) or points down (off).
+ * Light is from the upper left: the plate's bevel is lit on the upper left, its far edge catches light on the lower right, and the lever's shadow falls to the lower right.
+ * Theme with --ts-w and --ts-h (the plate's size, default 30 by 58 px). */
+
+.ts {
+  --w: var(--ts-w, 30px);
+  --h: var(--ts-h, 58px);
+  position: relative;
+  flex: none;
+  display: block;
+  width: var(--w);
+  height: var(--h);
+  margin: 0 0 0 12px;                 /* a little more air than between buttons: the volume knob's scale reaches past the knob */
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  cursor: pointer;
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+  background:
+    repeating-linear-gradient(90deg, rgba(255, 246, 214, .10) 0 1px, rgba(120, 84, 28, .07) 1px 2px),      /* the brushing: fine vertical lines */
+    linear-gradient(135deg, #e6c985 0%, #d3ad60 48%, #b98f40 100%);
+  box-shadow:
+    inset 1px 1px 0 rgba(255, 244, 205, .75), inset -1px -1px 0 rgba(112, 76, 24, .5),
+    0 0 1.6px 1px rgba(58, 40, 22, .5), 1px 1.6px 1.6px 1.6px rgba(255, 252, 240, .6),
+    2.5px 3.5px 5px 1px rgba(40, 24, 8, .38);          /* it stands a hair proud of the panel */
+}
+.ts[data-covered] { pointer-events: none; }
+.ts:focus-visible { outline: 2px solid #2a2622; outline-offset: 4px; }
+
+/* the two slot screws, top and bottom */
+.ts::before, .ts::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  width: 5px;
+  height: 5px;
+  margin-left: -2.5px;
+  border-radius: 50%;
+  background:
+    linear-gradient(45deg, transparent 43%, rgba(70, 46, 12, .85) 43% 57%, transparent 57%),
+    radial-gradient(circle at 35% 30%, #f1d994, #bd9446 70%);
+  box-shadow: .6px .8px 1px rgba(50, 30, 8, .5), inset -.4px -.4px .8px rgba(80, 52, 14, .5);
+}
+.ts::before { top: 4px; }
+.ts::after { bottom: 4px; }
+
+/* the slot the lever moves in */
+.ts-slot {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 10px;
+  height: 26px;
+  transform: translate(-50%, -50%);
+  border-radius: 1.5px;
+  background: #14100b;
+  box-shadow: inset 1px 1.4px 2px rgba(0, 0, 0, .9), 0 0 0 1px rgba(86, 58, 20, .75), .6px .8px 0 1px rgba(255, 238, 190, .35);
+}
+
+/* the arm: fixed at the slot's middle and carrying the shadow (which always falls to the lower right), with the lever turning inside it */
+.ts-arm {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+  filter: drop-shadow(2px 3px 1.5px rgba(30, 18, 6, .5));
+}
+.ts-lever {
+  position: absolute;
+  left: -3px;
+  top: 0;
+  width: 6px;
+  height: 20px;
+  transform-origin: 50% 0;
+  transform: rotate(0deg);                                  /* off: it points down */
+  transition: transform .16s cubic-bezier(.3, 1.5, .5, 1);  /* a firm snap over, with a hint of overshoot */
+  background:
+    repeating-linear-gradient(45deg, rgba(60, 38, 8, .38) 0 .9px, transparent .9px 2.2px),
+    repeating-linear-gradient(-45deg, rgba(60, 38, 8, .38) 0 .9px, transparent .9px 2.2px),      /* the knurling */
+    linear-gradient(90deg, #86692a 0%, #e8cd8c 32%, #fff2c8 48%, #cfa853 68%, #7d5f22 100%);       /* a round bar catching the light */
+}
+.ts-lever::after {                                          /* the rounded tip */
+  content: "";
+  position: absolute;
+  left: -.5px;
+  bottom: -3.5px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #fff8dc, #dcbb6a 55%, #8d6c2c);
+}
+.ts[aria-checked="true"] .ts-lever { transform: rotate(180deg); }      /* on: it stands up */
+
+@media (prefers-reduced-motion: reduce) { .ts-lever { transition: none; } }

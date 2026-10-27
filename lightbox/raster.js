@@ -17,6 +17,7 @@
 import { paintHoles } from "./bleed.js";
 import { paintSocketButton } from "./socket-buttons/buttons.js";
 import { paintSocketKnob } from "./socket-buttons/knob.js";
+import { paintToggle } from "./toggle-switch/toggle.js";
 
 const ORANGE = [217 / 255, 132 / 255, 58 / 255]; // film-mask cast, matches .lb-neg .lb-img::after
 const ORANGE_MIX = 0.55;
@@ -213,7 +214,7 @@ export function paintOverlay(ctx, W, H, { fall, grain }) {
  * edge turns over, then the dark room. m: the dark margin, f: how far the light falls off inside the rim, blur: how frosted the fall
  * is, all in css px. */
 /* the area of a button or knob and its markings, as a circle, for keeping dust off it (dust lies on the board, not on the fittings) */
-export function buttonClear(b) { return b.icon === "sign" ? { x: b.x, y: b.y, w: b.w + 8, h: b.h + 8 } : { x: b.x, y: b.y, r: b.icon === "knob" ? b.size * 1.08 : b.size / 2 + 6 }; }
+export function buttonClear(b) { return b.icon === "sign" || b.icon === "toggle" ? { x: b.x, y: b.y, w: b.w + 8, h: b.h + 8 } : { x: b.x, y: b.y, r: b.icon === "knob" ? b.size * 1.08 : b.size / 2 + 6 }; }
 export function clipOutButtons(ctx, buttons) {
   if (!buttons?.length) return false;
   ctx.save();
@@ -773,6 +774,7 @@ function createWindowView(scene, dpr, { mode, bg }) {
       if (scene.edgeCanvas) ctx.drawImage(scene.edgeCanvas, 0, 0, scene.edgeCanvas.width, scene.edgeCanvas.height, 0, 0, scene.W, scene.H);
       for (const btn of scene.buttons ?? []) {
         if (btn.icon === "sign") btn.paint(ctx, btn.x - btn.w / 2, btn.y - btn.h / 2, btn.w, btn.h);      // the etched lettering
+        else if (btn.icon === "toggle") paintToggle(ctx, btn);                                              // the brass light switch
         else (btn.icon === "knob" ? paintSocketKnob : paintSocketButton)(ctx, btn);
       }      // the push buttons lie on the panel, under the film
       drawScene(ctx, scene, { mode, view: { x0: cx - half, y0: cy - half, x1: cx + half, y1: cy + half } });

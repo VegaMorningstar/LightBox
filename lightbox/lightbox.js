@@ -16,6 +16,7 @@ import { createSocketButton, mountSocketCorner, setCovered, setPressed, ICONS } 
 import { createSocketKnob } from "./socket-buttons/knob.js";
 import { createEtchedText } from "./etched-text/etched.js";
 import { createStartScreen } from "./start-screen/start-screen.js";
+import { createToggleSwitch } from "./toggle-switch/toggle.js";
 import { createSpecks } from "./dust.js";
 import { createFilm } from "./film.js";
 import { bakeEdge, buildFilmFilter, createLensView, createNegView, paintGlowLayer, clipOutButtons, frameQuads, holeSpots, paintOverlay, parseColor, readScene, stripQuad, warmNegatives } from "./raster.js";
@@ -145,7 +146,7 @@ function insideQuad(q, x, y) {
 
 /* Two push buttons (socket-buttons/) in the panel's top right corner: reset, and (when `sliders` is on) the sliders, whose
    panel drops down at the top left, closed by default. There is no bar. */
-function buildControls(rows, { onOrganize, onButton, sliders = true, volume = null } = {}) {
+function buildControls(rows, { onOrganize, onButton, sliders = true, volume = null, lightSwitch = null } = {}) {
   const nav = document.createElement("nav");
   nav.className = "lb-nav";
   nav.setAttribute("aria-label", "Sliders");
@@ -226,7 +227,9 @@ function buildControls(rows, { onOrganize, onButton, sliders = true, volume = nu
   // the volume knob: it sits in the top left corner of the panel and sets the page's overall volume (it clicks as it turns, as the eyepiece ring does)
   const knob = volume ? createSocketKnob({ label: "Volume", min: 0, max: 2, value: volume.value, ...volume.sounds, onInput: (v) => { volume.onInput(v); setters.vol_master?.(v); } }) : null;
   if (knob) setters.vol_master_knob = (v) => knob.set(v);
-  return { wrap: nav, corner: [...(sliders ? [toggle] : []), organize], left: knob ? [knob.el] : [], setters };
+  // the brass switch next to the knob: it turns the light box's light on and off (toggle-switch/, start-screen/)
+  const light = lightSwitch ? createToggleSwitch({ label: "Light", on: false, onChange: lightSwitch.onChange }) : null;
+  return { wrap: nav, corner: [...(sliders ? [toggle] : []), organize], left: [...(knob ? [knob.el] : []), ...(light ? [light.el] : [])], lightSwitch: light, setters };
 }
 
 export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFade = 0.85, volumes = {}, outerGlass = {}, filmDrag = 1, filmFlutter = 1, stacking = 1, panelFalloff = 1.25, panelGlow = 1, panelGrain = 1, lightBleed = 1, lightSeep = 1.6, seepSpread = 10, signText = "dude with a pentax", showSign = false, startScreen = true, startLength = 1600, size, controls = true, sliders = true } = {}) {
@@ -236,7 +239,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
   // The start screen (start-screen/): the page opens with the light off, and the light comes on once everything is drawn (`sceneReady`).
   let markSceneReady = () => {};
   const sceneReady = new Promise((resolve) => { markSceneReady = resolve; });
-  const start = startScreen ? createStartScreen({ host: stage, ready: Promise.all([sceneReady, document.fonts?.ready]), play: () => sounds.strobe(), length: startLength }) : null;
+  const start = startScreen ? createStartScreen({ host: stage, ready: Promise.all([sceneReady, document.fonts?.ready]), play: (kind) => sounds.strobe(kind), length: startLength }) : null;
   if (start) stage.append(...start.els);
   root.append(buildFilmFilter("lb-film-alpha", parseColor(getComputedStyle(root).getPropertyValue("--lb-bg").trim() || "#eadec6")));
 
@@ -271,7 +274,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
   const signEl = sign?.el ?? document.createElement("div");          // an SVG: vector, so it stays sharp at any zoom
   signEl.setAttribute("class", "lb-sign");
   let signBox = null;                         // {x, y, w, h}: its centre and size, in stage (sheet) px; null when there is no room for it
-  let cornerEls = [], cornerButtons = [];   // the push buttons, which lie on the panel under the film
+  let cornerEls = [], cornerButtons = [], leftButtons = [];   // the push buttons, the volume knob and the light switch, which lie on the panel under the film
   let grain = panelGrain;
   let falloff = panelFalloff;
   let glow = panelGlow;
@@ -369,11 +372,12 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     if (!signOn || !sign.text.trim() || !cornerButtons.length) return;
     const origin = stage.getBoundingClientRect();
     const knob = cornerButtons.find((b) => b.dataset.icon === "knob");
-    const rights = cornerButtons.filter((b) => b.dataset.icon !== "knob");
+    const rights = cornerButtons.filter((b) => !leftButtons.includes(b));
     if (!knob || !rights.length) return;
     const k = knob.getBoundingClientRect();
-    // between the knob's scale (which reaches about 14 px past the knob) and the nearest button's socket, with a little air on each side
-    const left = k.right - origin.left + 28, right = Math.min(...rights.map((b) => b.getBoundingClientRect().left)) - origin.left - 20;
+    // between the last thing on the left (the knob, whose scale reaches about 14 px past it, then the light switch) and the nearest button's socket, with a little air on each side
+    const last = leftButtons[leftButtons.length - 1].getBoundingClientRect();
+    const left = last.right - origin.left + (leftButtons[leftButtons.length - 1] === knob ? 28 : 24), right = Math.min(...rights.map((b) => b.getBoundingClientRect().left)) - origin.left - 20;
     const { aspect, midY } = sign.measure();                               // the lettering's box, width over height, and where the middle of its small letters is
     // centred on the screen (the panel's middle), not on the gap, so the room it has is twice the smaller distance from the middle to the knob's side or the buttons' side
     const cx = origin.width / 2, room = 2 * Math.min(cx - left, right - cx);
@@ -398,13 +402,14 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     for (const b of cornerButtons) {
       const r = b.getBoundingClientRect();
       const cx = r.left - origin.left + r.width / 2, cy = r.top - origin.top + r.height / 2, rad = r.width / 2;
+      const rect = b.dataset.icon === "toggle";                  // the light switch is a rectangle, the rest are round
       let covered = false;
       for (let k = 0; k < 9 && !covered; k++) {                 // the centre and eight points round its edge
-        const a = (k - 1) * (Math.PI / 4), px = k ? cx + Math.cos(a) * rad : cx, py = k ? cy + Math.sin(a) * rad : cy;
+        const a = (k - 1) * (Math.PI / 4), px = k ? cx + (rect ? Math.sign(Math.cos(a)) * r.width / 2 * (Math.abs(Math.cos(a)) > 0.1 ? 1 : 0) : Math.cos(a) * rad) : cx, py = k ? cy + (rect ? Math.sign(Math.sin(a)) * r.height / 2 * (Math.abs(Math.sin(a)) > 0.1 ? 1 : 0) : Math.sin(a) * rad) : cy;
         covered = quads.some((q) => insideQuad(q, px, py));
       }
       setCovered(b, covered);
-      shown.push({ x: cx, y: cy, size: r.width, icon: b.dataset.icon, angle: +(b.dataset.angle ?? 0) });
+      shown.push(rect ? { x: cx, y: cy, size: r.height, icon: "toggle", w: r.width, h: r.height, on: b.getAttribute("aria-checked") === "true" } : { x: cx, y: cy, size: r.width, icon: b.dataset.icon, angle: +(b.dataset.angle ?? 0) });
     }
     if (signBox) shown.push({ x: signBox.x, y: signBox.y, size: signBox.h, icon: "sign", w: signBox.w, h: signBox.h, paint: (ctx, x, y, w, h) => sign.paint(ctx, x, y, w, h) });
     sceneRef.buttons = shown;       // the glasses draw them too, under the film
@@ -784,6 +789,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
       onOrganize: () => { film?.reset(); kick(); },
       onButton: (phase) => { sounds.unlock(); sounds.button(phase); },
       sliders,
+      lightSwitch: start ? { onChange: (on) => (on ? start.turnOn() : start.turnOff()) } : null,
       volume: {
         value: vols.master,
         onInput: (v) => { sounds.setVolume("master", v); saveVolume(v); },
@@ -792,10 +798,13 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
       },
     });
     setters = c.setters;
+    // the switch follows the light: it flips on when the light-up begins, and off when the light goes out (and the glasses redraw it)
+    if (start && c.lightSwitch) start.onState = (on) => { c.lightSwitch.set(on); if (sceneRef) { render(); kick(); } };
     root.append(c.wrap);
     cornerEls = [mountSocketCorner(stage, c.corner), ...(c.left.length ? [mountSocketCorner(stage, c.left, { side: "left" })] : [])];
     stage.prepend(...cornerEls);         // the buttons lie on the panel, under the film
     cornerButtons = [...c.corner, ...c.left];
+    leftButtons = c.left;
     placeSign();
   }
 

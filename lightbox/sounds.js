@@ -196,7 +196,7 @@ export function createSounds({ volumes = {} } = {}) {
 
   return {
     /* the start-up strobe (start-screen/sound.js): resolves true if it is playing, false if the browser held audio back */
-    strobe: () => strobe.play(),
+    strobe: (kind) => strobe.play(kind),
     /* call from a user gesture so the browser lets audio start */
     unlock() { ensure(); },
     /* change one sound's level (or the master) while it is playing */

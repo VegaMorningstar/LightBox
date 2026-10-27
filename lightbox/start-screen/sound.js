@@ -9,7 +9,7 @@
  *   jitter, noiseBurst, tone   the small building blocks the sounds share
  *
  *   const strobe = createStrobeSound(audio);
- *   await strobe.play();            // resolves true once it is playing, false if the browser would not start audio
+ *   await strobe.play("on");       // the flash. play("off") is a single, softer click for switching off. Resolves true once it is playing, false if the browser would not start audio
  *
  * Browsers only start audio after the visitor has touched the page (a click, a tap or a key), so on a first visit with no touch yet there is no sound:
  * it is skipped rather than queued, because a late snap would sound wrong. It plays whenever the browser allows (e.g. on the replay button).
@@ -18,12 +18,18 @@
 export function createStrobeSound(audio) {
   const { vols, ensure, jitter, noiseBurst, tone } = audio;
   return {
-    async play() {
+    async play(kind = "on") {
       if (vols.strobe <= 0 || !ensure()) return false;
       const ctx = audio.ctx(), master = audio.strobeMaster();
       if (ctx.state !== "running") await Promise.race([ctx.resume().catch(() => {}), new Promise((r) => setTimeout(r, 150))]);
       if (ctx.state !== "running") return false;                       // the browser is holding audio back: stay silent
       const t = ctx.currentTime + 0.02;
+      if (kind === "off") {                                            // switching off: one softer click, no flash and no crackle
+        noiseBurst(t, { type: "bandpass", freq: 1500 * jitter(0.05), q: 0.8, peak: 0.6, decay: 0.022, attack: 0.0005 }, master);
+        tone(t, { type: "sine", from: 230 * jitter(0.04), to: 90, peak: 0.42, decay: 0.07, sweep: 0.045 }, master);
+        tone(t, { type: "sine", from: 120 * jitter(0.03), to: 50, peak: 0.35, decay: 0.1, sweep: 0.07 }, master);
+        return true;
+      }
 
       // "ka": the bright snap of the shutter opening
       noiseBurst(t, { type: "bandpass", freq: 3300 * jitter(0.05), q: 0.9, peak: 0.95, decay: 0.014, attack: 0.0004 }, master);
