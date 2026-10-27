@@ -354,9 +354,12 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     sounds.glassDown(0.15 + 0.3 * Math.min(1, (speed - 0.05) / 1.5));   // 0.15 (a touch) to 0.45 (a hard hit): kept faint
   }
   const barLimit = () => barBox.y + barBox.h + Do / 2;     // the highest the eyepiece's centre may be on the board: its rim stops at the bar's lower edge
-  const clamp = () => {
+  const clampStage = () => {
     goal.x = Math.max(0, Math.min(stage.clientWidth, goal.x));
     goal.y = Math.max(0, Math.min(stage.offsetHeight, goal.y));
+  };
+  const clamp = () => {
+    clampStage();
     if (lift < BAR_CLEAR) goal.y = Math.max(goal.y, barLimit());
   };
 
@@ -510,9 +513,9 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
   const coast = (dt) => {
     const nx = goal.x + vel.x * dt, ny = goal.y + vel.y * dt;
     goal.x = nx; goal.y = ny;
-    clamp();
+    clampStage();                          // (the bar is dealt with in tick, when the eyepiece as it is SEEN reaches it: the shown glass lags the goal)
     if (goal.x !== nx) vel.x *= -BOUNCE;
-    if (goal.y !== ny) { if (ny < barLimit() && lift < BAR_CLEAR) barHit(Math.abs(vel.y)); vel.y *= -BOUNCE; }
+    if (goal.y !== ny) vel.y *= -BOUNCE;
     // In the air (still coming down from a lift) there is almost nothing to slow it; once it touches the board, friction takes over
     const f = Math.exp(-dt / (lift > 0.02 ? AIR_MS : FRICTION_MS));
     vel.x *= f; vel.y *= f;
@@ -551,8 +554,8 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     if (adaptive && raw) govern(raw);
     if (coasting) coast(dt);
     // set down over the bar (it was lifted across it and let go): it cannot rest on the bar, so it is moved off it, down to the board
-    if (lift < BAR_CLEAR && goal.y < barLimit()) { goal.y = barLimit(); if (vel.y < 0) vel.y *= -BOUNCE; }
-    if (barTouching && (goal.y > barLimit() + 3 || lift >= BAR_CLEAR)) barTouching = false;     // it has come away from the bar (or been lifted off it)
+    if (!coasting && lift < BAR_CLEAR && goal.y < barLimit()) goal.y = barLimit();
+    if (barTouching && (cur.y > barLimit() + 3 || lift >= BAR_CLEAR)) barTouching = false;     // it has come away from the bar (or been lifted off it)
     // up steadily (the page eases it in and out), down about twice as fast; the sound of it touching down plays as it lands
     const wasUp = lift > 0;
     if (lift < liftGoal) lift = Math.min(liftGoal, lift + dt / liftTime);
@@ -572,6 +575,18 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     const px = cur.x, py = cur.y;
     cur.x += (goal.x - cur.x) * 0.35;
     cur.y += (goal.y - cur.y) * 0.35;
+    // THE BAR: contact is the edge of the eyepiece's outer glass meeting the bar's lower edge, as SEEN: the shown glass lags the goal (it eases toward it), so a wall
+    // that only stopped the goal would turn the eyepiece back while its glass was still short of the bar. Here the shown position is what is stopped, and what bounces.
+    if (lift < BAR_CLEAR) {
+      const lim = barLimit();
+      if (cur.y < lim && py >= lim - 0.5) {                           // (arriving at the bar from the board; one set down over it is eased off it instead)
+        const into = Math.max(0, (py - cur.y) / dt);                  // how fast the glass was moving up as it arrived, px per ms
+        cur.y = lim;
+        if (coasting && vel.y < 0) vel.y *= -BOUNCE;                  // a throw bounces off it, as off a screen edge
+        goal.y = lim;
+        barHit(into);
+      }
+    }
     eyeV.x += ((cur.x - px) / dt - eyeV.x) * 0.5;
     eyeV.y += ((cur.y - py) / dt - eyeV.y) * 0.5;
     // fast slides drag the film a little; slow movement leaves it alone
@@ -838,9 +853,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     const p = pointerInStage(lastPointer.x, lastPointer.y);
     const wantX = p.x - grab.x, wantY = p.y - grab.y;                  // where the hand says the eyepiece should be (it may be past a wall)
     goal.x = wantX; goal.y = wantY;
-    const intoBar = lift < BAR_CLEAR && goal.y < barLimit();         // the hand is pushing the eyepiece into the bar
     clamp(); kick();
-    if (intoBar) barHit(Math.max(0, -eyeV.y));
     const now = performance.now();
     samples.push({ t: now, x: wantX, y: wantY });                      // the throw is measured from where the hand wants it, not where a wall let it get to, so a throw that is let go while pushed against the bar or an edge still has its speed and bounces
     while (samples.length > 1 && now - samples[0].t > 100) samples.shift();
