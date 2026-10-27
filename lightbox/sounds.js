@@ -322,11 +322,17 @@ export function createSounds({ volumes = {} } = {}) {
        touch as it settles. */
     place(force = 1) {
       this.thump(force);                     // the board's own answer, in parallel with the glass
+      this.glassDown(1);
+    },
+    /* Just the glass of the "set down" sound, at `strength` (0..1, 1 = as the eyepiece comes down on the board): the recording of the glass touching down, or the
+       synthesised touch. The eyepiece touching the wooden bar uses it, softly (see barHit in lightbox.js). */
+    glassDown(strength = 1) {
       if (vols.place <= 0 || !ensure()) return;
-      if (clips.place) { playClip(clips.place, bus.place); return; }
+      if (clips.place) { playClip(clips.place, bus.place, 0.9 * strength); return; }
       const t = ctx.currentTime + 0.002;
       const soft = softBus("place");
-      const touch = (at, k) => {
+      const touch = (at, k0) => {
+        const k = k0 * strength;
         noiseBurst(at, { type: "lowpass", freq: 1500 * jitter(0.08), q: 0.6, peak: 0.34 * k, decay: 0.03, attack: 0.001 }, soft);   // the thump
         noiseBurst(at, { freq: 1100 * jitter(0.1), q: 0.55, peak: 0.12 * k, decay: 0.055 }, soft);                                  // the matte brush
         for (const [hz, amp, dec] of [[1180, 0.07, 0.026], [2260, 0.035, 0.016], [3540, 0.014, 0.01]]) {                           // faint glass body

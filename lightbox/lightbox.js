@@ -344,6 +344,15 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
   /* The wooden bar is a solid wall: an eyepiece resting on the light box cannot go past it (its rim stops at the bar's lower edge, and a throw bounces off it as off
      any edge, see coast). Lifted, the eyepiece is above the bar and goes right over it. */
   const BAR_CLEAR = 0.2;                  // the eyepiece counts as lifted clear of the bar once its lift is past this
+  let barTouching = false;                // the eyepiece is against the bar right now (so it sounds once on touching, not all the while it is pushed on it)
+  /* the eyepiece's glass touches the bar at `speed` px per ms: the glass-down sound, faint, a little louder the harder it hit (once per touch) */
+  function barHit(speed) {
+    if (barTouching) return;
+    barTouching = true;
+    if (speed < 0.05) return;                                        // laid against it without any speed: silent
+    sounds.unlock();
+    sounds.glassDown(0.15 + 0.3 * Math.min(1, (speed - 0.05) / 1.5));   // 0.15 (a touch) to 0.45 (a hard hit): kept faint
+  }
   const barLimit = () => barBox.y + barBox.h + Do / 2;     // the highest the eyepiece's centre may be on the board: its rim stops at the bar's lower edge
   const clamp = () => {
     goal.x = Math.max(0, Math.min(stage.clientWidth, goal.x));
@@ -503,7 +512,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     goal.x = nx; goal.y = ny;
     clamp();
     if (goal.x !== nx) vel.x *= -BOUNCE;
-    if (goal.y !== ny) vel.y *= -BOUNCE;
+    if (goal.y !== ny) { if (ny < barLimit() && lift < BAR_CLEAR) barHit(Math.abs(vel.y)); vel.y *= -BOUNCE; }
     // In the air (still coming down from a lift) there is almost nothing to slow it; once it touches the board, friction takes over
     const f = Math.exp(-dt / (lift > 0.02 ? AIR_MS : FRICTION_MS));
     vel.x *= f; vel.y *= f;
@@ -543,6 +552,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
     if (coasting) coast(dt);
     // set down over the bar (it was lifted across it and let go): it cannot rest on the bar, so it is moved off it, down to the board
     if (lift < BAR_CLEAR && goal.y < barLimit()) { goal.y = barLimit(); if (vel.y < 0) vel.y *= -BOUNCE; }
+    if (barTouching && (goal.y > barLimit() + 3 || lift >= BAR_CLEAR)) barTouching = false;     // it has come away from the bar (or been lifted off it)
     // up steadily (the page eases it in and out), down about twice as fast; the sound of it touching down plays as it lands
     const wasUp = lift > 0;
     if (lift < liftGoal) lift = Math.min(liftGoal, lift + dt / liftTime);
@@ -827,7 +837,9 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
   const follow = () => {
     const p = pointerInStage(lastPointer.x, lastPointer.y);
     goal.x = p.x - grab.x; goal.y = p.y - grab.y;
+    const intoBar = lift < BAR_CLEAR && goal.y < barLimit();         // the hand is pushing the eyepiece into the bar
     clamp(); kick();
+    if (intoBar) barHit(Math.max(0, -eyeV.y));
     const now = performance.now();
     samples.push({ t: now, x: goal.x, y: goal.y });
     while (samples.length > 1 && now - samples[0].t > 100) samples.shift();
