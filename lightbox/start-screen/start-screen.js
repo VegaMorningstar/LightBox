@@ -17,7 +17,7 @@
  *   start.run();                      // wait for ready, then light up (call once)
  *   start.replay();                   // dark again, then light up after a moment (no waiting for ready)
  *   start.turnOff(); start.turnOn();  // the light off at once (it dies away in about a fifth of a second) / on at once, with the flash
- *   start.on; start.length = 2000; start.enabled = false;
+ *   start.on; start.length = 2000; start.enabled = false; start.flash = 0.5;   // flash: how strong the over-bright flash is (default 0.7; 0 = none, 1 = the full timeline)
  *
  * Under "reduce motion" there is no flash and no sound: the light just fades up over about half a second.
  * The shape of the light-up is in timeline.js; the sound's in sound.js; the rules are in PHYSICS.md.
@@ -28,6 +28,7 @@ import { BASE_MS, lightAt } from "./timeline.js";
 const DARK = 0.9;           // how much of the light is gone while it is off (so a tenth of it still shows: the room is not pitch black)
 const DWELL = 600;          // ms the unlit screen is held after everything is ready, so it is seen
 const MAX_WAIT = 6000;      // ms: never keep the page dark longer than this, whatever is still loading
+const FLASH = 0.7;          // how strong the over-bright flash is (1 would be the timeline's full 1.5 times normal; this is a gentler 0.7 of that)
 const OFF_MS = 220;         // ms the light takes to die away when it is switched off
 
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -42,7 +43,7 @@ export function createStartScreen({ host, ready = Promise.resolve(), play = null
   let token = 0;
   let level = 0;            // how bright the light is right now (0..1), so switching off starts from where it is
   const api = {
-    els: [dark, bloom], phase: "off", length, enabled, on: false, onState: null,
+    els: [dark, bloom], phase: "off", length, enabled, flash: FLASH, on: false, onState: null,
     replay: () => run(false, performance.now()),
     run: () => run(true, made),
     turnOn, turnOff,
@@ -75,7 +76,7 @@ export function createStartScreen({ host, ready = Promise.resolve(), play = null
       const ms = (now - t0) / scale;
       const s = reduced ? { light: smooth(0, 600, now - t0), bloom: 0, done: now - t0 >= 600 } : lightAt(ms);
       if (s.done) { show(false); apply(1, 0); api.phase = "done"; return; }
-      apply(s.light, s.bloom);
+      apply(s.light, s.bloom * api.flash);
       requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);

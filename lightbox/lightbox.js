@@ -780,6 +780,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
       { group: "Sound · interface", key: "vol_button", name: "Button click", min: 0, max: 1, step: 0.05, value: vols.button, onInput: (v) => sounds.setVolume("button", v) },
       // the start screen (start-screen/): how long the light takes to come on, how loud the strobe is, and a button to see it again
       { group: "Start screen", key: "start_length", name: "Light-up length (s)", min: 0.8, max: 3, step: 0.1, value: startLength / 1000, onInput: (v) => { if (start) start.length = v * 1000; } },
+      { group: "Start screen", key: "start_flash", name: "Flash intensity", min: 0, max: 1.5, step: 0.05, value: 0.7, onInput: (v) => { if (start) start.flash = v; } },
       { group: "Start screen", key: "vol_strobe", name: "Start-up sound", min: 0, max: 1, step: 0.05, value: vols.strobe, onInput: (v) => sounds.setVolume("strobe", v) },
       { group: "Start screen", key: "start_replay", type: "button", name: "Replay start screen", onInput: () => { sounds.unlock(); start?.replay(); } },
       // the sign on the panel: switch it off, or change its words (an empty line hides it too)
