@@ -1,5 +1,5 @@
 /* start-screen: the page opens on the light box with its light OFF, waits until everything on it is fully drawn, then the light comes on the way a
- * tube does: a few weak flickers, then it strikes, over-brightens (the light spills past the film) and settles to the normal state. A sound can play
+ * tube does: one weak flicker, then it strikes, over-brightens (the light spills past the film) and settles to the normal state. A sound can play
  * with it. The over-bright light passes only through what is see-through (the board, the pictures); the opaque parts stay dark. It takes about 1.6 s, and then the page is exactly as it always was: both layers are removed.
  *
  *   import { createStartScreen } from "./start-screen/start-screen.js";
@@ -7,7 +7,7 @@
  *   const start = createStartScreen({
  *     host: stage,                    // the element it covers (it must be positioned); the two layers are start.els
  *     ready: promise,                 // settles when everything under it is drawn (it is not waited for longer than MAX_WAIT)
- *     play: (scale) => promise,       // optional: start the sound; resolves true once it is playing (see sound.js). scale = length / BASE_MS
+ *     play: () => promise,            // optional: start the sound; resolves true once it is playing (see sound.js)
  *     length: 1600,                   // ms, the whole run (1000..3000 is about right)
  *     enabled: true,                  // false: never darkens
  *   });
@@ -60,7 +60,7 @@ export function createStartScreen({ host, ready = Promise.resolve(), play = null
     if (hold > 0) await delay(hold);
     if (mine !== token) return;
     const scale = api.length / BASE_MS;
-    if (!reduced && play) { try { await play(scale); } catch { /* no sound: carry on */ } }
+    if (!reduced && play) { try { await play(); } catch { /* no sound: carry on */ } }
     if (mine !== token) return;
     api.phase = "lighting";
     const t0 = performance.now();

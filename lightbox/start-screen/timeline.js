@@ -3,20 +3,17 @@
  *
  * Times are in ms on a base run of BASE_MS; a run of any other length is the same shape stretched (scale = length / BASE_MS).
  *
- * The light comes on the way a tube does: a few weak flickers, then it strikes, over-shoots (brighter than normal, the glow spilling past the film)
+ * The light comes on the way a tube does: one weak flicker, then it strikes, over-shoots (brighter than normal, the glow spilling past the film)
  * and settles back to exactly the normal state.
  */
 
 export const BASE_MS = 1600;
 
-/* the first, weak flashes before it strikes: when each starts, how long it lasts, how bright it gets (0..1 of the normal light) */
+/* the single weak flash right after the switch is thrown, before the light strikes: when it starts, how long it lasts, how bright it gets (0..1 of the normal light) */
 export const FLICKERS = [
-  { at: 0, dur: 70, h: 0.28 },
-  { at: 150, dur: 55, h: 0.16 },
-  { at: 245, dur: 95, h: 0.42 },
-  { at: 400, dur: 60, h: 0.24 },
+  { at: 0, dur: 90, h: 0.42 },
 ];
-export const STRIKE_AT = 540;       // ms: the light strikes
+export const STRIKE_AT = 330;       // ms: the light strikes (the switch is thrown at 0)
 const RISE = 240;                   // ms it takes to reach its peak
 const PEAK = 1.5;                   // how far over normal it goes (1 = normal)
 const SETTLE = 200;                 // ms: how quickly the over-brightness dies away

@@ -236,7 +236,7 @@ export function mountLightBox(root, { photos, zoom = 1.2, shadow = 1.8, shadowFa
   // The start screen (start-screen/): the page opens with the light off, and the light comes on once everything is drawn (`sceneReady`).
   let markSceneReady = () => {};
   const sceneReady = new Promise((resolve) => { markSceneReady = resolve; });
-  const start = startScreen ? createStartScreen({ host: stage, ready: Promise.all([sceneReady, document.fonts?.ready]), play: (scale) => sounds.strobe(scale), length: startLength }) : null;
+  const start = startScreen ? createStartScreen({ host: stage, ready: Promise.all([sceneReady, document.fonts?.ready]), play: () => sounds.strobe(), length: startLength }) : null;
   if (start) stage.append(...start.els);
   root.append(buildFilmFilter("lb-film-alpha", parseColor(getComputedStyle(root).getPropertyValue("--lb-bg").trim() || "#eadec6")));
 

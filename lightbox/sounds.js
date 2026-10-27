@@ -186,7 +186,7 @@ export function createSounds({ volumes = {} } = {}) {
   }
 
   // the start-up strobe's sound is its own file (start-screen/sound.js); it borrows these parts
-  const strobe = createStrobeSound({ vols, ensure, ctx: () => ctx, noise: () => noise, strobeMaster: () => strobeMaster, jitter, envelope, noiseBurst, tone });
+  const strobe = createStrobeSound({ vols, ensure, ctx: () => ctx, strobeMaster: () => strobeMaster, jitter, noiseBurst, tone });
 
   function clickAt(t, strength, dest) {
     noiseBurst(t, { freq: 3000 * jitter(0.12), q: 0.9, peak: 0.85 * strength, decay: 0.011 }, dest);
@@ -196,7 +196,7 @@ export function createSounds({ volumes = {} } = {}) {
 
   return {
     /* the start-up strobe (start-screen/sound.js): resolves true if it is playing, false if the browser held audio back */
-    strobe: (scale) => strobe.play(scale),
+    strobe: () => strobe.play(),
     /* call from a user gesture so the browser lets audio start */
     unlock() { ensure(); },
     /* change one sound's level (or the master) while it is playing */
